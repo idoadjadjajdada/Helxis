@@ -1,0 +1,3337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Helxis</title>
+<style>
+  :root{
+    --accent:#bb8dff; --live:#5ee6b8; --danger:#ff7a8a;
+    --glass:rgba(28,16,48,.72); --edge:rgba(190,150,255,.18); --lip:rgba(220,200,255,.13);
+    --ink:#e8dcff; --dim:#9d8cc0;
+    --fast:130ms; --slow:260ms; --spring:cubic-bezier(.2,1.35,.4,1);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;overflow:hidden;background:#05030c;color:var(--ink);
+    font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    font-variant-numeric:tabular-nums;-webkit-user-select:none;user-select:none;
+    -webkit-tap-highlight-color:transparent;touch-action:none}
+  #sky{position:fixed;inset:0;width:100%;height:100%;display:block;
+    image-rendering:pixelated;image-rendering:crisp-edges;cursor:crosshair}
+
+  /* ---- deck ---------------------------------------------------------- */
+  #deck{position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:var(--glass);backdrop-filter:blur(14px) saturate(1.6);
+    -webkit-backdrop-filter:blur(14px) saturate(1.6);
+    border-top:1px solid var(--edge);box-shadow:inset 0 1px 0 var(--lip)}
+  .row{display:flex;align-items:center;gap:6px;padding:5px 8px}
+  .row+.row{border-top:1px solid rgba(190,150,255,.10)}
+  button,.btn{font:inherit;color:var(--ink);background:rgba(255,255,255,.045);
+    border:1px solid var(--edge);border-radius:3px;padding:4px 8px;cursor:pointer;
+    transition:background var(--fast) var(--spring),border-color var(--fast) var(--spring),
+               transform var(--fast) var(--spring);white-space:nowrap}
+  button:hover{background:rgba(187,141,255,.16);border-color:rgba(187,141,255,.4)}
+  button:active{transform:translateY(1px)}
+  button.on{background:rgba(187,141,255,.26);border-color:var(--accent);color:#fff}
+  button.danger:hover{background:rgba(255,122,138,.2);border-color:var(--danger)}
+  .sep{width:1px;align-self:stretch;background:rgba(190,150,255,.16);margin:0 3px}
+  .lbl{color:var(--dim);font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+
+  #shelfJumps{display:flex;gap:3px;flex:0 0 auto}
+  #shelfJumps button{padding:3px 6px;font-size:10px}
+  #picker{display:flex;gap:10px;overflow-x:auto;overflow-y:hidden;flex:1 1 auto;
+    scrollbar-width:thin;scrollbar-color:rgba(187,141,255,.35) transparent;padding-bottom:2px}
+  #picker::-webkit-scrollbar{height:5px}
+  #picker::-webkit-scrollbar-thumb{background:rgba(187,141,255,.35);border-radius:3px}
+  .group{display:flex;gap:4px;align-items:flex-start;flex:0 0 auto}
+  .group>.gname{writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px;
+    color:var(--dim);letter-spacing:.1em;text-transform:uppercase;padding:2px 0;
+    border-right:1px solid rgba(190,150,255,.14);margin-right:2px;cursor:pointer}
+  .chip{display:flex;flex-direction:column;align-items:center;gap:2px;width:52px;
+    padding:3px 2px;border:1px solid transparent;border-radius:4px;cursor:pointer;flex:0 0 auto;
+    transition:background var(--fast) var(--spring),border-color var(--fast) var(--spring)}
+  .chip:hover{background:rgba(187,141,255,.1)}
+  .chip.on{background:rgba(187,141,255,.22);border-color:var(--accent)}
+  .chip canvas{image-rendering:pixelated;width:26px;height:26px}
+  .chip span{font-size:8.5px;color:var(--dim);text-align:center;line-height:1.15;
+    overflow:hidden;text-overflow:ellipsis;width:100%}
+  .chip.on span{color:#fff}
+
+  #clockWrap{display:flex;align-items:center;gap:7px}
+  #rateBig{font-size:16px;color:#fff;min-width:78px;text-align:right}
+  #rateMul{font-size:10px;color:var(--dim);min-width:46px}
+  #rate{width:150px;accent-color:var(--accent);cursor:pointer}
+  #live{width:6px;height:6px;border-radius:50%;background:var(--live);
+    box-shadow:0 0 6px var(--live);opacity:.25;transition:opacity var(--fast)}
+  #live.on{opacity:1}
+  #placeChip{display:flex;align-items:center;gap:5px;padding:3px 7px;border:1px solid var(--edge);
+    border-radius:3px;color:var(--dim);font-size:10px}
+  #placeChip canvas{image-rendering:pixelated;width:16px;height:16px}
+
+  #clearBtn{position:relative;overflow:hidden}
+  #clearFill{position:absolute;inset:0;background:rgba(255,122,138,.42);
+    transform-origin:left;transform:scaleX(0);pointer-events:none}
+
+  /* ---- popovers ------------------------------------------------------ */
+  .pop{position:fixed;z-index:30;background:var(--glass);backdrop-filter:blur(16px) saturate(1.6);
+    -webkit-backdrop-filter:blur(16px) saturate(1.6);border:1px solid var(--edge);
+    border-radius:5px;box-shadow:0 -6px 28px rgba(0,0,0,.6),inset 0 1px 0 var(--lip);
+    padding:9px;display:none;transform-origin:bottom left}
+  .pop.open{display:block;animation:grow var(--slow) var(--spring)}
+  @keyframes grow{from{opacity:0;transform:scale(.9) translateY(8px)}to{opacity:1;transform:none}}
+  .pop h4{margin:0 0 6px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--dim);font-weight:400}
+  .field{display:flex;align-items:center;gap:6px;margin:4px 0;font-size:10.5px}
+  .field label{width:58px;color:var(--dim)}
+  .field input[type=range]{flex:1;accent-color:var(--accent);min-width:110px}
+  .field output{width:62px;text-align:right;color:#fff}
+
+  /* ---- inspector ----------------------------------------------------- */
+  #insp{position:fixed;z-index:25;display:none;min-width:184px;max-width:230px;
+    background:var(--glass);backdrop-filter:blur(16px) saturate(1.6);
+    -webkit-backdrop-filter:blur(16px) saturate(1.6);
+    border:1px solid var(--edge);border-radius:5px;padding:8px 9px;
+    box-shadow:0 4px 22px rgba(0,0,0,.6),inset 0 1px 0 var(--lip);pointer-events:auto}
+  #insp.open{display:block}
+  #inspName{font-size:12.5px;color:#fff;margin-bottom:5px;display:flex;justify-content:space-between;gap:6px}
+  #inspName b{font-weight:500}
+  #inspClose{cursor:pointer;color:var(--dim);padding:0 2px}
+  #inspClose:hover{color:var(--danger)}
+  .kv{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;padding:1px 0}
+  .kv i{color:var(--dim);font-style:normal}
+  .kv b{font-weight:400;color:var(--ink)}
+  #compBar{display:flex;height:8px;border-radius:2px;overflow:hidden;margin:6px 0 3px;
+    border:1px solid rgba(190,150,255,.2)}
+  #compBar div{height:100%}
+  #compKey{display:flex;flex-wrap:wrap;gap:5px;font-size:8.5px;color:var(--dim)}
+  #compKey span{display:flex;align-items:center;gap:2px}
+  #compKey i{width:6px;height:6px;border-radius:1px;display:inline-block}
+  #inspActs{display:flex;gap:5px;margin-top:7px}
+  #inspActs button{flex:1;padding:3px 0;font-size:10px}
+  #leader{position:fixed;z-index:24;pointer-events:none;inset:0;display:none}
+  #leader.open{display:block}
+
+  #hud{position:fixed;top:8px;left:10px;z-index:15;font-size:10px;color:var(--dim);
+    pointer-events:none;line-height:1.6;text-shadow:0 1px 3px #000}
+  #hud b{color:var(--ink);font-weight:400}
+  #toast{position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:40;
+    background:var(--glass);border:1px solid var(--edge);border-radius:4px;padding:5px 11px;
+    font-size:11px;opacity:0;transition:opacity var(--slow);pointer-events:none;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  #toast.on{opacity:1}
+
+  @media (prefers-reduced-motion:reduce){
+    *{animation-duration:1ms!important;transition-duration:1ms!important}
+  }
+</style>
+</head>
+<body>
+<canvas id="sky"></canvas>
+<svg id="leader"><line stroke="rgba(187,141,255,.5)" stroke-width="1" stroke-dasharray="3 3"/></svg>
+<div id="hud"></div>
+<div id="toast"></div>
+
+<div id="insp">
+  <div id="inspName"><b>—</b><span id="inspClose">&#10005;</span></div>
+  <div id="inspRows"></div>
+  <div id="compBar"></div>
+  <div id="compKey"></div>
+  <div id="inspActs">
+    <button id="followBtn">Follow</button>
+    <button id="delBtn" class="danger">Delete</button>
+  </div>
+</div>
+
+<div id="deck">
+  <div class="row">
+    <div id="shelfJumps"></div>
+    <div class="sep"></div>
+    <div id="picker"></div>
+  </div>
+  <div class="row">
+    <button id="playBtn" title="Space">&#9654;</button>
+    <div id="live"></div>
+    <div class="sep"></div>
+    <div id="clockWrap">
+      <div id="rateBig">—</div>
+      <div>
+        <div id="rateMul">1&times;</div>
+        <input id="rate" type="range" min="0" max="1000" value="420">
+      </div>
+    </div>
+    <div class="sep"></div>
+    <button id="dragBtn" title="D">Drag</button>
+    <button id="orbitBtn" class="on" title="O">Orbits</button>
+    <button id="trailBtn" class="on" title="T">Trails</button>
+    <button id="autoBtn" class="on">Auto-orbit</button>
+    <div class="sep"></div>
+    <div id="placeChip"><canvas width="16" height="16"></canvas><span>nothing</span></div>
+    <div class="sep"></div>
+    <button id="sysBtn">Systems</button>
+    <button id="forgeBtn" title="G">Forge</button>
+    <button id="fitBtn" title="F">Fit</button>
+    <button id="clearBtn" class="danger" title="hold"><span id="clearFill"></span>Hold to clear</button>
+  </div>
+</div>
+
+<div class="pop" id="sysPop"><h4>Systems</h4><div id="sysList"></div></div>
+<div class="pop" id="forgePop"><h4>Forge</h4><div id="forgeBody"></div></div>
+
+<script>
+"use strict";
+/* ====================================================================== *
+ *  1. CONSTANTS AND SCALES                                               *
+ * ---------------------------------------------------------------------- *
+ *  Three scales are chosen rather than measured; every other number here  *
+ *  is either measured or falls out of one that is.  See README §"What is  *
+ *  deliberately wrong".                                                   *
+ * ====================================================================== */
+const K = {
+  G: 1,                    // by construction; the other scales are chosen to make it true
+  /* Softening has to be small next to the smallest thing it acts between,
+   * or a close orbit stops being a Kepler orbit and the eccentricity
+   * readout stops meaning anything.  Earth's display radius is 0.16, so
+   * 0.35 was more than twice it: a moon at 2.6 planet radii came back
+   * reading e = 0.56 on an orbit that was in fact circular.               */
+  SOFT: 0.01,              // softening length, world units
+  SOFT2: 0.01 * 0.01,
+
+  /* mass -------------------------------------------------------------- */
+  /* The design asked for a Sun of 3,000 Earth masses AND every planet
+   * lifted twenty-fold.  Those cannot both hold.  Mass is conserved
+   * additively through every merge, so the mass axis has to be linear,
+   * and a linear axis cannot compress the star-to-planet ratio while
+   * leaving planet-to-planet ratios real -- lifting the planets by 20
+   * and dropping the Sun to 3,000 makes Jupiter (6,356) twice the weight
+   * of its own star.  A 111x compression also inverts the roster: no
+   * real brown dwarf outweighs Jupiter once stars are divided by 111.
+   * So: planets keep their true Earth masses, and the Sun alone is
+   * compressed, by 10x rather than 111x.  That still buys a Sun that
+   * visibly circles its own barycentre at inner-system zoom, and it
+   * leaves every other ratio in the roster intact.                      */
+  SUN_MASS: 33300,         // Earth masses; the true figure is 333,000
+  PLANET_LIFT: 1,          // planets are at their true Earth masses
+
+  /* distance ---------------------------------------------------------- */
+  AU: 150,                 // world units per AU
+
+  /* size -------------------------------------------------------------- */
+  /* The design says 80x in §2 and then, in §14, works out that the Moon
+   * must land "at two" Earth radii instead of sixty.  Sixty over eighty
+   * is 0.75, not two; sixty over twenty-five is 2.4.  §14's arithmetic is
+   * the one that has to hold, because it is what makes moon systems fit,
+   * and 80x also puts the Sun's own surface outside Mercury's perihelion.
+   * So: 25x.  Visibility of small worlds is MIN_PX's job, not the
+   * exaggeration's -- which is what §2 says MIN_PX is for.               */
+  SIZE_EXAG: 25,           // display radii are 25x true radii
+  /* Stars compound the problem: 25x would put the Sun's surface 17 world
+   * units out and a red giant's 1,750, swallowing Saturn.  Fusing bodies
+   * and remnants take 2x instead, which puts a red giant's surface just
+   * inside Earth's orbit, where a real one reaches.                      */
+  STAR_EXAG: 2,
+  MIN_PX: 2,               // nothing is ever drawn under two buffer pixels
+
+  /* real-world constants, SI, used only to restore honest energetics --- */
+  SI_G: 6.674e-11,
+  SI_MEARTH: 5.972e24,
+  SI_REARTH: 6.371e6,
+  SI_AU: 1.495979e11,
+  SI_YEAR: 3.1557e7,
+  SI_RJUP: 6.9911e7,
+  SI_MJUP: 1.89813e27,
+  SI_MSUN: 1.98892e30,
+  SI_SB: 5.670e-8,         // Stefan-Boltzmann
+
+  /* chosen: the speed of light, set so precession is legible ----------- */
+  C_LIGHT: 1400,           // world units per sim time unit (true value ~45000)
+
+  MOTE_CAP: 200000,
+};
+
+/* The year is derived, never written down.  It is the period of a circular
+ * orbit at one AU around the star this preset actually built.  Retune the
+ * distance scale or the star's mass and the readout follows.             */
+let YEAR_UNITS = 2 * Math.PI * Math.sqrt(Math.pow(K.AU, 3) / (K.G * K.SUN_MASS));
+let YEAR_LABEL = 'yr';
+
+function deriveYear(hostMass, auInUnits, realPeriodYears) {
+  // period of a circular orbit at auInUnits around hostMass, expressed so
+  // that one "year" of the reference orbit is one YEAR_UNITS.
+  const T = 2 * Math.PI * Math.sqrt(Math.pow(auInUnits, 3) / (K.G * hostMass));
+  return T / (realPeriodYears || 1);
+}
+
+/* ---- unit bridges ---------------------------------------------------- *
+ * Velocity comes out honest for free: distances are real and the time unit
+ * was derived from them, so one sim velocity unit is a real number of m/s.
+ * Masses and radii each carry one admitted exaggeration, and the two
+ * functions below undo them so that collision energetics run in SI.       */
+const SI = {
+  get vel()  { return (K.SI_AU / K.AU) / (K.SI_YEAR / YEAR_UNITS); },   // m/s per sim unit
+  get len()  { return K.SI_AU / K.AU; },                                // m per world unit
+  mass(m)    { return (m / K.PLANET_LIFT) * K.SI_MEARTH; },             // kg from sim mass
+  radius(r)  { return (r / K.SIZE_EXAG) * (K.SI_AU / K.AU); },          // m from display radius
+};
+
+const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
+const lerp  = (a, b, t) => a + (b - a) * t;
+const TAU   = Math.PI * 2;
+
+/* deterministic PRNG, so a seeded run reproduces exactly ---------------- */
+let _seed = 0x9e3779b9 >>> 0;
+function srand(s) { _seed = (s >>> 0) || 1; }
+function rnd() {
+  _seed ^= _seed << 13; _seed >>>= 0;
+  _seed ^= _seed >>> 17;
+  _seed ^= _seed << 5;  _seed >>>= 0;
+  return _seed / 4294967296;
+}
+const rndRange = (a, b) => a + (b - a) * rnd();
+function gauss() {
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(TAU * v);
+}
+
+/* ====================================================================== *
+ *  2. MATERIALS                                                          *
+ * ---------------------------------------------------------------------- *
+ *  Five things, and the total mass of each is conserved exactly through   *
+ *  every collision, collapse, escape and crumble.  There is no "molten"   *
+ *  material: molten is a temperature.                                     *
+ * ====================================================================== */
+const MAT = { Fe: 0, Si: 1, C: 2, H2O: 3, HHe: 4 };
+const MAT_NAMES = ['Fe', 'Si', 'C', 'H2O', 'HHe'];
+const NMAT = 5;
+
+const MATS = [
+  /* Fe  */ { name: 'Fe',  full: 'Iron',     rho: 7900, melt: 1810, volatile: false,
+              /* J/kg to bring to the melt from 300 K, latent heat included */
+              qMelt: 450 * 1510 + 2.47e5, qVap: 6.3e6,
+              base: [0x79, 0x76, 0x7f], lum: 0.47 },
+  /* Si  */ { name: 'Si',  full: 'Silicate', rho: 3300, melt: 1500, volatile: false,
+              qMelt: 1000 * 1200 + 4.0e5, qVap: 1.3e7,
+              base: [0x7d, 0x6a, 0x55], lum: 0.42 },
+  /* C   */ { name: 'C',   full: 'Carbon',   rho: 3500, melt: 3820, volatile: false,
+              qMelt: 710 * 3520 + 1.2e5, qVap: 6.0e7,
+              base: [0x33, 0x30, 0x38], lum: 0.19 },
+  /* H2O */ { name: 'H2O', full: 'Water',    rho: 1000, rhoIce: 920, melt: 273, volatile: true,
+              qMelt: 2100 * 123 + 3.34e5, qVap: 2.6e6,
+              base: [0xc6, 0xdc, 0xe8], lum: 0.85 },
+  /* HHe */ { name: 'HHe', full: 'H/He',     rho: 90,   melt: 0,    volatile: true,
+              qMelt: Infinity, qVap: 4.5e5,
+              base: [0xd6, 0xcc, 0xa8], lum: 0.80 },
+];
+
+/* densities above are uncompressed; self-compression is applied in §3 */
+
+/* ---- incandescence --------------------------------------------------- *
+ *  Colour comes from material AND temperature together.  Above about
+ *  800 K the hue is the blackbody hue and the material shows through as
+ *  light and dark, which is why two worlds folded into a melt stay
+ *  distinguishable.  Tinting a material colour toward orange instead
+ *  turns rock and iron the same shade of sand.                            */
+const BB_KEYS = [
+  [  800, 0x55, 0x0c, 0x02],
+  [ 1200, 0x9c, 0x27, 0x03],
+  [ 1600, 0xd2, 0x51, 0x07],
+  [ 2000, 0xf2, 0x84, 0x1c],
+  [ 2600, 0xff, 0xbe, 0x60],
+  [ 3400, 0xff, 0xe2, 0xae],
+  [ 5000, 0xff, 0xf4, 0xe4],
+  [ 8000, 0xe4, 0xec, 0xff],
+  [20000, 0xc0, 0xd4, 0xff],
+];
+function blackbody(T) {
+  if (T <= BB_KEYS[0][0]) return [BB_KEYS[0][1], BB_KEYS[0][2], BB_KEYS[0][3]];
+  for (let i = 1; i < BB_KEYS.length; i++) {
+    if (T <= BB_KEYS[i][0]) {
+      const a = BB_KEYS[i - 1], b = BB_KEYS[i];
+      const t = (T - a[0]) / (b[0] - a[0]);
+      return [lerp(a[1], b[1], t), lerp(a[2], b[2], t), lerp(a[3], b[3], t)];
+    }
+  }
+  const z = BB_KEYS[BB_KEYS.length - 1];
+  return [z[1], z[2], z[3]];
+}
+
+/* how much of what you see is glow rather than reflected light */
+function glowFrac(T) {
+  if (T < 700) return 0;
+  const x = (T - 700) / 900;             // fully incandescent by ~1600 K
+  return clamp(x * x, 0, 1);
+}
+
+const _col = [0, 0, 0];
+function matColour(mat, T, shade) {
+  const m = MATS[mat];
+  const g = glowFrac(T);
+  const s = shade === undefined ? 1 : shade;
+  let r, gr, b;
+  if (g <= 0) {
+    r = m.base[0]; gr = m.base[1]; b = m.base[2];
+    if (mat === MAT.H2O && T > 273) { r = 0x3d; gr = 0x6e; b = 0xa8; }   // liquid water
+  } else {
+    const bb = blackbody(T);
+    /* hue from temperature, material as light and dark */
+    const k = 0.55 + 0.9 * m.lum;
+    r  = lerp(m.base[0], bb[0] * k, g);
+    gr = lerp(m.base[1], bb[1] * k, g);
+    b  = lerp(m.base[2], bb[2] * k, g);
+  }
+  _col[0] = clamp(r * s, 0, 255) | 0;
+  _col[1] = clamp(gr * s, 0, 255) | 0;
+  _col[2] = clamp(b * s, 0, 255) | 0;
+  return _col;
+}
+
+/* ---- viscosity ------------------------------------------------------- *
+ *  Denser motes sink at a rate set by density contrast over viscosity,
+ *  and viscosity is a steep function of temperature because cold rock
+ *  does not flow.  A shallow law gives clean concentric layers every
+ *  time; the steepness is where the swirl comes from.                     */
+function mobility(mat, T) {
+  const m = MATS[mat];
+  if (!isFinite(m.melt) || m.melt <= 0) return 1;
+  const w = 0.055 * m.melt;                    // sigmoid width, ~6% of the melt point
+  const s = 1 / (1 + Math.exp(-(T - m.melt) / w));
+  if (T <= m.melt) return s * 0.02;            // solid rock creeps, barely
+  const sup = Math.min(6, Math.pow(T / m.melt, 3));
+  return s * sup;
+}
+
+/* uncompressed density, with ice below freezing */
+function matRho(mat, T) {
+  const m = MATS[mat];
+  if (mat === MAT.H2O && T < m.melt) return m.rhoIce;
+  return m.rho;
+}
+
+/* empty composition vector ------------------------------------------- */
+const zeroComp = () => new Float64Array(NMAT);
+function compTotal(c) { let s = 0; for (let i = 0; i < NMAT; i++) s += c[i]; return s; }
+function compAdd(dst, src, scale) {
+  const k = scale === undefined ? 1 : scale;
+  for (let i = 0; i < NMAT; i++) dst[i] += src[i] * k;
+  return dst;
+}
+
+/* ====================================================================== *
+ *  3. BODIES                                                             *
+ * ---------------------------------------------------------------------- *
+ *  A body is a stack of shells ordered by density, innermost first.       *
+ *  Nothing stores what kind of thing a body is; the name is a function of  *
+ *  the stack, evaluated whenever it is needed.                            *
+ * ====================================================================== */
+
+/* ---- mass-radius ----------------------------------------------------- *
+ *  Condensed material: R proportional to M^0.279 above about 0.14 M(E),
+ *  uncompressed below it.  0.279 is Chen & Kipping's measured terran
+ *  exponent and matches the 0.27 quoted from memory in the design.
+ *  Envelopes: the Neptunian and Jovian branches of the same fit, re-
+ *  anchored on Jupiter so the curve is continuous and Saturn lands where
+ *  Saturn is.  The Jovian exponent is -0.044, so a giant flattens at
+ *  about one Jupiter radius and then shrinks very slowly.  The steep
+ *  inverse case is degenerate matter (R proportional to M^-1/3), which
+ *  belongs to remnants and not to gas.                                    */
+const CK = {
+  terA: 1.008, terB: 0.279,       // R(Re) = terA * M^terB
+  nepA: 0.6572, nepB: 0.589,
+  jovA: 14.43,  jovB: -0.044,
+  break1: 3.98,                   // terran/neptunian crossing
+  break2: 131.6,                  // neptunian/jovian crossing
+};
+function ckRadiusEarth(Me) {                     // real Earth masses -> real Earth radii
+  if (Me <= 0) return 0;
+  if (Me < CK.break1) return CK.terA * Math.pow(Me, CK.terB);
+  if (Me < CK.break2) return CK.nepA * Math.pow(Me, CK.nepB);
+  return CK.jovA * Math.pow(Me, CK.jovB);
+}
+
+/* compression factor for condensed material, calibrated so a one-Earth-mass
+ * silicate world lands on the terran branch and small bodies stay
+ * uncompressed.                                                            */
+function compression(Me) {
+  if (Me <= 0) return 1;
+  return Math.min(1, 0.90 * Math.pow(Me, CK.terB - 1 / 3));
+}
+
+/* display radius, world units, from a composition vector in sim mass */
+function radiusOf(comp) {
+  const M = compTotal(comp);
+  if (M <= 0) return 0;
+  let volCond = 0, mCond = 0;
+  for (let i = 0; i < NMAT; i++) {
+    if (i === MAT.HHe) continue;
+    const kg = SI.mass(comp[i]);
+    volCond += kg / MATS[i].rho;
+    mCond += comp[i];
+  }
+  const McondE = mCond / K.PLANET_LIFT;
+  let rCond = volCond > 0 ? Math.cbrt(3 * volCond / (4 * Math.PI)) : 0;   // metres
+  rCond *= compression(McondE);
+  const rCondE = rCond / K.SI_REARTH;
+
+  const fHHe = comp[MAT.HHe] / M;
+  let rE = rCondE;
+  if (fHHe > 0) {
+    const w = clamp(fHHe / 0.15, 0, 1);
+    const rCK = ckRadiusEarth(M / K.PLANET_LIFT);
+    rE = rCondE + w * Math.max(0, rCK - rCondE);
+  }
+  /* real Earth radii -> world units, then the admitted 80x exaggeration */
+  return rE * K.SI_REARTH / SI.len * K.SIZE_EXAG;
+}
+
+/* the mass above which a body has had time and heat to sort itself:
+ * roughly 500 km radius, which is about 1e-4 real Earth masses.           */
+const DIFF_MASS = 1e-4 * K.PLANET_LIFT;
+
+let _nextId = 1;
+
+class Body {
+  constructor(o) {
+    this.id = o.id || _nextId++;
+    this.x = o.x || 0; this.y = o.y || 0;
+    this.vx = o.vx || 0; this.vy = o.vy || 0;
+    this.ax = 0; this.ay = 0;
+    this.shells = o.shells || [];        // [{comp:Float64Array, T}] innermost first
+    this.spin = o.spin || 0;             // radians per sim time unit
+    this.angle = o.angle || 0;
+    this.held = false;
+    this.name = o.name || null;          // preset label, never the class
+    this.trail = [];
+    this.trailLast = null;
+    this.rOverride = o.rOverride || 0;        // stars and remnants: radius from their own track
+    this.inflated = !!o.inflated;
+    this.stellarClass = o.stellarClass || null;
+    this.remnant = o.remnant || null;
+    this.surfaceMap = o.surfaceMap || null;   // projected from motes when it settled
+    this.sprite = null; this.spriteKey = '';
+    this.seed = o.seed || (rnd() * 1e9) | 0;
+    /* stellar, filled in by §7 */
+    this.fusing = !!o.fusing;
+    this.coreMass = o.coreMass || 0;
+    this.coreFuel = o.coreFuel === undefined ? 1 : o.coreFuel;
+    this.lum = o.lum || 0;
+    this.comp = zeroComp();
+    this.shellR = new Float64Array(Math.max(1, this.shells.length));
+    this.refresh();
+  }
+
+  refresh() {
+    const c = this.comp; c.fill(0);
+    for (const s of this.shells) compAdd(c, s.comp);
+    this.mass = compTotal(c);
+    this.radius = Math.max(1e-6, this.rOverride || radiusOf(c));
+    /* shell outer radii: cumulative compressed volume, rescaled so the
+     * outermost shell's radius is the body's radius.                      */
+    const n = this.shells.length;
+    if (this.shellR.length !== n) this.shellR = new Float64Array(n);
+    let cum = zeroComp(), last = 0;
+    for (let k = 0; k < n; k++) {
+      compAdd(cum, this.shells[k].comp);
+      last = radiusOf(cum);
+      this.shellR[k] = last;
+    }
+    if (last > 0) { const s = this.radius / last; for (let k = 0; k < n; k++) this.shellR[k] *= s; }
+    return this;
+  }
+
+  get differentiated() { return this.mass >= DIFF_MASS && this.shells.length > 1; }
+
+  /* mass-weighted mean temperature, and the temperature of the rock alone */
+  meanT() {
+    let w = 0, s = 0;
+    for (const sh of this.shells) { const m = compTotal(sh.comp); w += m; s += m * sh.T; }
+    return w > 0 ? s / w : 0;
+  }
+  rockT() {
+    let w = 0, s = 0;
+    for (const sh of this.shells) {
+      const m = sh.comp[MAT.Fe] + sh.comp[MAT.Si] + sh.comp[MAT.C];
+      w += m; s += m * sh.T;
+    }
+    return w > 0 ? s / w : this.meanT();
+  }
+  surfaceT() { return this.shells.length ? this.shells[this.shells.length - 1].T : 0; }
+
+  /* what the outermost shell is made of, which is what you can see */
+  surfaceFrac(mat) {
+    const sh = this.shells[this.shells.length - 1];
+    if (!sh) return 0;
+    const t = compTotal(sh.comp);
+    return t > 0 ? sh.comp[mat] / t : 0;
+  }
+
+  frac(mat) { return this.mass > 0 ? this.comp[mat] / this.mass : 0; }
+  realMassEarth() { return this.mass / K.PLANET_LIFT; }
+
+  /* specific binding energy, J/kg, at the body's TRUE radius.  Display
+   * radii are 80x too large, so using them here would make every world
+   * 80x easier to melt than it is.                                        */
+  bindingSpecific() {
+    const M = SI.mass(this.mass), R = SI.radius(this.radius);
+    return R > 0 ? 3 * K.SI_G * M / (5 * R) : 0;
+  }
+  escapeSpeed() {   // sim units, at the DISPLAY surface, which is what motes leave from
+    return Math.sqrt(2 * K.G * this.mass / Math.max(this.radius, K.SOFT));
+  }
+}
+
+/* ---- the class name is read off the composition ----------------------- *
+ *  Order matters, first match wins.  Two departures from the design, both
+ *  deliberate: hot Jupiter is tested before gas giant (otherwise the gas
+ *  giant rule swallows it and the entry is unreachable), and stripped core
+ *  has a rule of its own, because the design's table had no way to name
+ *  one even though §9.2 requires the name to appear on its own.           *
+ *  Masses below are REAL Earth masses, not lifted sim units.              */
+function className(b, ctx) {
+  if (b.fusing) return stellarName(b);
+  if (b.remnant) return b.remnant;
+
+  const Me = b.realMassEarth();
+  const fFe = b.frac(MAT.Fe), fC = b.frac(MAT.C), fHHe = b.frac(MAT.HHe);
+  const fH2Osurf = b.surfaceFrac(MAT.H2O);
+  const T = b.surfaceT();
+  const ecc = ctx && ctx.e !== undefined ? ctx.e : (b._ecc || 0);
+
+  if (Me < 1e-6) return 'planetesimal';
+  if (Me < 1e-3) {
+    if (b.frac(MAT.H2O) > 0.3 && ecc > 0.25) return 'comet';
+    return 'asteroid';
+  }
+  if (Me < 0.02) return Me < 5e-3 ? 'dwarf planet' : 'moon';
+
+  if (fHHe > 0.01 && T > 1000 && b.inflated) return 'hot Jupiter';
+  if (fHHe > 0.5) return 'gas giant';
+  /* the design's 0.15 threshold puts Uranus and Neptune outside their own
+   * class: both carry 8-15% H/He by mass and land at 0.12 here.  0.08 is
+   * the bottom of the measured range and is what the entry needs.       */
+  if (fHHe > 0.08) return Me > 10 ? 'ice giant' : 'mini-Neptune';
+
+  /* a giant that lost its envelope is hot and dry, and cools into a
+   * super-Earth on its own, which is what really happens to one.          */
+  if (Me > 3 && fHHe < 0.02 && b.frac(MAT.H2O) < 0.02 && T > 1000) return 'stripped core';
+
+  if (fFe > 0.55) return 'iron world';
+  if (fC  > 0.35) return 'carbon world';
+  /* "H2O at the surface" has to mean the water is a real part of the body
+   * AND it is what you are standing on.  Reading it as the surface SHELL's
+   * own water fraction makes every world with a puddle an ocean world:
+   * Earth's water shell is pure water, so that test scores 1.0 on a planet
+   * that is 0.5% water.                                                  */
+  if (b.frac(MAT.H2O) > 0.25 && fH2Osurf > 0.5) return T > 273 ? 'ocean world' : 'ice world';
+  if (Me > 3 && b.frac(MAT.Si) >= Math.max(fFe, fC, b.frac(MAT.H2O))) return 'super-Earth';
+  return 'rocky world';
+}
+
+/* molten is a temperature, so it is a state word and never a class */
+function stateWord(b) {
+  if (b.fusing || b.remnant) return '';
+  const rt = b.rockT(), rock = b.frac(MAT.Fe) + b.frac(MAT.Si) + b.frac(MAT.C);
+  if (rock > 0.2) {
+    if (rt > MATS[MAT.Si].melt + 600) return 'vaporising';
+    if (rt > MATS[MAT.Si].melt) return 'molten';
+    if (rt > MATS[MAT.Si].melt - 350) return 'cooling';
+  }
+  if (b.frac(MAT.H2O) > 0.15 && b.surfaceT() < 273) return 'frozen';
+  return '';
+}
+function stellarName(b) { return b.stellarClass || 'star'; }
+
+/* ---- constructing a stack -------------------------------------------- *
+ *  Fractions are by mass.  Below the differentiation mass a body is one
+ *  mixed shell, because it was never hot enough to sort itself.           */
+function makeStack(massSim, fracs, temps) {
+  const order = [[MAT.Fe], [MAT.Si, MAT.C], [MAT.H2O], [MAT.HHe]];
+  let tot = 0; for (const k in fracs) tot += fracs[k];
+  if (tot <= 0) { fracs = { Si: 1 }; tot = 1; }
+  const comp = zeroComp();
+  for (const k in fracs) comp[MAT[k]] = massSim * fracs[k] / tot;
+
+  if (massSim < DIFF_MASS) {
+    const T = temps && temps.mix !== undefined ? temps.mix : (temps && temps.surface) || 180;
+    return [{ comp, T }];
+  }
+  /* interpolate over the layers this body ACTUALLY has.  Spreading the
+   * gradient over all four when only two exist leaves the outermost shell
+   * a third of the way to the core temperature, and §3.4 reads the class
+   * name off the surface temperature, so a cool super-Earth comes back
+   * labelled a stripped core.                                             */
+  const present = [];
+  for (let li = 0; li < order.length; li++) {
+    const sc = zeroComp(); let any = 0;
+    for (const m of order[li]) { sc[m] = comp[m]; any += comp[m]; }
+    if (any > 0) present.push({ li, comp: sc });
+  }
+  const surf = (temps && temps.surface) || 288;
+  const core = (temps && temps.core) || Math.max(surf, 1200 + 2400 * Math.pow(massSim, 0.4));
+  const shells = [];
+  for (let k = 0; k < present.length; k++) {
+    const p = present[k];
+    let T;
+    if (temps && temps.layers && temps.layers[p.li] !== undefined) T = temps.layers[p.li];
+    else T = lerp(core, surf, present.length > 1 ? k / (present.length - 1) : 1);
+    shells.push({ comp: p.comp, T });
+  }
+  return shells;
+}
+
+/* ====================================================================== *
+ *  4. INTEGRATOR                                                         *
+ * ---------------------------------------------------------------------- *
+ *  Velocity Verlet, which is symplectic: orbits keep their shape over     *
+ *  long runs instead of spiralling the way plain Euler makes them.        *
+ *  Accelerations carry between steps, so gravity is evaluated once.       *
+ * ====================================================================== */
+const W = {
+  bodies: [],
+  t: 0,                 // sim time units
+  paused: true,
+  rate: 1,              // sim time units per real second
+  substepBudget: 900,   // body-integrations per frame; see §12
+  lastDt: 0,
+  clumps: [],
+  events: [],
+};
+
+function bodyAccelerations(bodies) {
+  const n = bodies.length;
+  for (let i = 0; i < n; i++) { bodies[i].ax = 0; bodies[i].ay = 0; }
+  for (let i = 0; i < n; i++) {
+    const a = bodies[i];
+    for (let j = i + 1; j < n; j++) {
+      const b = bodies[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const r2 = dx * dx + dy * dy + K.SOFT2;
+      const inv = 1 / (r2 * Math.sqrt(r2));
+      const fx = dx * inv, fy = dy * inv;
+      a.ax += fx * b.mass; a.ay += fy * b.mass;
+      b.ax -= fx * a.mass; b.ay -= fy * a.mass;
+    }
+  }
+}
+
+function stepBodies(dt) {
+  const bs = W.bodies, n = bs.length;
+  for (let i = 0; i < n; i++) {
+    const b = bs[i];
+    if (b.held) continue;
+    b.x += b.vx * dt + 0.5 * b.ax * dt * dt;
+    b.y += b.vy * dt + 0.5 * b.ay * dt * dt;
+    b.angle += b.spin * dt;
+  }
+  const oax = new Float64Array(n), oay = new Float64Array(n);
+  for (let i = 0; i < n; i++) { oax[i] = bs[i].ax; oay[i] = bs[i].ay; }
+  bodyAccelerations(bs);
+  for (let i = 0; i < n; i++) {
+    const b = bs[i];
+    if (b.held) { b.ax = 0; b.ay = 0; continue; }   // held: out of the integrator's hands,
+    b.vx += 0.5 * (oax[i] + b.ax) * dt;             // but still pulling on everything else
+    b.vy += 0.5 * (oay[i] + b.ay) * dt;
+  }
+}
+
+/* the speed that balances the softened force law.  The textbook
+ * sqrt(GM/r) launches a close moon about a quarter too fast, which strips
+ * it off its planet inside two simulated years.                           */
+function circularSpeed(M, r) {
+  const r2 = r * r + K.SOFT2;
+  return Math.sqrt(K.G * M) * r / Math.pow(r2, 0.75);
+}
+
+function totalEnergy() {
+  let ke = 0, pe = 0;
+  const bs = W.bodies;
+  for (let i = 0; i < bs.length; i++) {
+    const a = bs[i];
+    ke += 0.5 * a.mass * (a.vx * a.vx + a.vy * a.vy);
+    for (let j = i + 1; j < bs.length; j++) {
+      const b = bs[j];
+      const dx = b.x - a.x, dy = b.y - a.y;
+      pe -= K.G * a.mass * b.mass / Math.sqrt(dx * dx + dy * dy + K.SOFT2);
+    }
+  }
+  const M = Motes;
+  for (let i = 0; i < M.count; i++) {
+    ke += 0.5 * M.m[i] * (M.vx[i] * M.vx[i] + M.vy[i] * M.vy[i]);
+    for (let j = 0; j < bs.length; j++) {
+      const b = bs[j];
+      const dx = b.x - M.x[i], dy = b.y - M.y[i];
+      pe -= K.G * M.m[i] * b.mass / Math.sqrt(dx * dx + dy * dy + K.SOFT2);
+    }
+  }
+  return { ke, pe, total: ke + pe };
+}
+
+function totalMomentum() {
+  let px = 0, py = 0;
+  for (const b of W.bodies) { px += b.mass * b.vx; py += b.mass * b.vy; }
+  const M = Motes;
+  for (let i = 0; i < M.count; i++) { px += M.m[i] * M.vx[i]; py += M.m[i] * M.vy[i]; }
+  return { px, py };
+}
+
+/* mass in each of the five materials, everywhere in the simulation */
+function totalMass() {
+  const c = zeroComp();
+  for (const b of W.bodies) compAdd(c, b.comp);
+  const M = Motes;
+  for (let i = 0; i < M.count; i++) c[M.mat[i]] += M.m[i];
+  return c;
+}
+
+/* ---- orbital elements from the state vector --------------------------- *
+ *  Energy gives the semi-major axis; the eccentricity vector gives both
+ *  the shape and the direction of periapsis, which a scalar eccentricity
+ *  cannot.                                                                */
+function orbitOf(b, host) {
+  if (!host || host === b) return null;
+  const dx = b.x - host.x, dy = b.y - host.y;
+  const dvx = b.vx - host.vx, dvy = b.vy - host.vy;
+  const r = Math.hypot(dx, dy);
+  if (r < 1e-9) return null;
+  const mu = K.G * (host.mass + b.mass);
+  const v2 = dvx * dvx + dvy * dvy;
+  const h = dx * dvy - dy * dvx;                       // specific angular momentum, z only
+  const energy = v2 / 2 - mu / r;
+  if (energy >= 0) return { bound: false, e: 1 + 2 * energy * h * h / (mu * mu), a: Infinity, h };
+  const a = -mu / (2 * energy);
+  /* eccentricity vector */
+  const ex = (v2 / mu - 1 / r) * dx - (dx * dvx + dy * dvy) / mu * dvx;
+  const ey = (v2 / mu - 1 / r) * dy - (dx * dvx + dy * dvy) / mu * dvy;
+  const e = Math.hypot(ex, ey);
+  const argp = Math.atan2(ey, ex);
+  const T = TAU * Math.sqrt(a * a * a / mu);
+  return { bound: true, a, e, argp, h, T, r, peri: a * (1 - e), apo: a * (1 + e), retro: h < 0 };
+}
+
+/* the thing a body is most plausibly going round: the one whose pull
+ * dominates and which the body is actually bound to.                      */
+function hostOf(b) {
+  let best = null, bestScore = 0;
+  for (const o of W.bodies) {
+    if (o === b || o.mass <= b.mass) continue;
+    const dx = o.x - b.x, dy = o.y - b.y;
+    const r2 = dx * dx + dy * dy + K.SOFT2;
+    const score = o.mass / r2;
+    if (score > bestScore) {
+      const orb = orbitOf(b, o);
+      if (orb && orb.bound) { bestScore = score; best = o; }
+    }
+  }
+  return best;
+}
+
+/* ====================================================================== *
+ *  5. MOTES                                                              *
+ * ---------------------------------------------------------------------- *
+ *  Written before collisions rather than after, because every collision    *
+ *  outcome is expressed in motes and nothing here depends on collisions.   *
+ *                                                                         *
+ *  A mote has a position, a velocity, a mass, a material and a            *
+ *  temperature.  From the moment a body is destroyed the mote is the unit  *
+ *  of bookkeeping, and nothing downstream invents or destroys material.    *
+ * ====================================================================== */
+const Motes = {
+  cap: K.MOTE_CAP,
+  count: 0,
+  x:  new Float64Array(K.MOTE_CAP), y:  new Float64Array(K.MOTE_CAP),
+  vx: new Float64Array(K.MOTE_CAP), vy: new Float64Array(K.MOTE_CAP),
+  m:  new Float64Array(K.MOTE_CAP),
+  T:  new Float32Array(K.MOTE_CAP),
+  r:  new Float32Array(K.MOTE_CAP),
+  mat:   new Uint8Array(K.MOTE_CAP),
+  clump: new Int32Array(K.MOTE_CAP),
+  nb:    new Uint8Array(K.MOTE_CAP),      // neighbours, from the contact pass
+  age:   new Float32Array(K.MOTE_CAP),
+  limit: K.MOTE_CAP,
+
+  clear() { this.count = 0; this.ghost.fill(0); },
+
+  spawn(x, y, vx, vy, m, mat, T, r) {
+    if (this.count >= this.limit) return -1;
+    const i = this.count++;
+    this.x[i] = x; this.y[i] = y; this.vx[i] = vx; this.vy[i] = vy;
+    this.m[i] = m; this.mat[i] = mat; this.T[i] = T; this.r[i] = r;
+    this.clump[i] = -1; this.nb[i] = 0; this.age[i] = 0;
+    this.ghost[i] = 0;      // slots are reused; a stale ghost bit fades a live
+    return i;               // mote out and takes its mass with it
+  },
+
+  /* swap with the last live mote; callers iterating downward are safe */
+  remove(i) {
+    const last = --this.count;
+    if (i !== last) {
+      this.x[i] = this.x[last]; this.y[i] = this.y[last];
+      this.vx[i] = this.vx[last]; this.vy[i] = this.vy[last];
+      this.m[i] = this.m[last]; this.T[i] = this.T[last]; this.r[i] = this.r[last];
+      this.mat[i] = this.mat[last]; this.clump[i] = this.clump[last];
+      this.nb[i] = this.nb[last]; this.age[i] = this.age[last];
+      this.ghost[i] = this.ghost[last];   // every field, or a live mote lands
+                                          // in a ghost's slot and fades away
+    }
+  },
+
+  massOf() { let s = 0; for (let i = 0; i < this.count; i++) s += this.m[i]; return s; },
+};
+
+/* ---- shattering a body ------------------------------------------------ *
+ *  One mote per sprite pixel, in place, at the speed the body was going,
+ *  each tagged with the material of the shell it came from and that
+ *  shell's temperature.  The sampling is radial: a mote drawn from the
+ *  middle of the disc is more likely to be core material, one from the rim
+ *  is envelope.  Sampling is by projected VOLUME, so a core mote comes out
+ *  the same size as a mantle mote and heavier, which is what "denser"
+ *  means.  Per-material mass is then exact by construction, not by luck.   *
+ * ---------------------------------------------------------------------- */
+/* "one per sprite pixel" makes the cloud's resolution depend on the zoom
+ * you happened to be at, which would make the physics depend on it too.
+ * The pixel count is the ceiling; the floor is fixed.                     */
+function moteCountFor(b) {
+  const px = Math.max(4, b.radius * cam.scale);
+  return clamp(Math.round(Math.PI * px * px * 0.55), 420, 6000);
+}
+
+function shatterBody(b, extraHeat) {
+  const R = b.radius;
+  const shells = b.shells;
+  const ns = shells.length;
+  if (!ns) return [];
+
+  let N = moteCountFor(b);
+  if (Motes.count + N > Motes.limit) N = Math.max(0, Motes.limit - Motes.count);
+  if (N < ns * NMAT) N = Math.min(Motes.limit - Motes.count, ns * NMAT);
+  if (N <= 0) return [];
+
+  const inner = new Float64Array(ns);
+  for (let k = 1; k < ns; k++) inner[k] = b.shellR[k - 1];
+
+  /* first pass: place motes and pick a shell for each by chord length */
+  const bx = new Float64Array(N), by = new Float64Array(N);
+  const sh = new Int32Array(N);
+  const buckets = []; for (let k = 0; k < ns; k++) buckets.push([]);
+  const w = new Float64Array(ns);
+
+  for (let i = 0; i < N; i++) {
+    const q = R * Math.sqrt(rnd()), th = TAU * rnd();
+    bx[i] = Math.cos(th) * q; by[i] = Math.sin(th) * q;
+    let tot = 0;
+    for (let k = 0; k < ns; k++) {
+      const ro = b.shellR[k], ri = inner[k];
+      const a = ro * ro - q * q, c = ri * ri - q * q;
+      w[k] = 2 * ((a > 0 ? Math.sqrt(a) : 0) - (c > 0 ? Math.sqrt(c) : 0));
+      tot += w[k];
+    }
+    let pick = ns - 1;
+    if (tot > 0) {
+      let u = rnd() * tot;
+      for (let k = 0; k < ns; k++) { u -= w[k]; if (u <= 0) { pick = k; break; } }
+    }
+    sh[i] = pick; buckets[pick].push(i);
+  }
+
+  /* any shell that got no motes has to get some, or its material vanishes */
+  for (let k = 0; k < ns; k++) {
+    if (buckets[k].length) continue;
+    let big = 0; for (let j = 1; j < ns; j++) if (buckets[j].length > buckets[big].length) big = j;
+    if (!buckets[big].length) continue;
+    const take = buckets[big].pop(); sh[take] = k; buckets[k].push(take);
+  }
+
+  const rMote = R * Math.sqrt(0.85 / N);
+  const out = [];
+  const cs = Math.cos(b.angle), sn = Math.sin(b.angle);
+
+  for (let k = 0; k < ns; k++) {
+    const list = buckets[k]; if (!list.length) continue;
+    const c = shells[k].comp;
+    const dq = extraHeat ? extraHeat[k] || 0 : 0;
+
+    /* split this shell's motes between its materials by largest remainder,
+     * with at least one mote for any material actually present.            */
+    const mk = compTotal(c);
+    const quota = new Int32Array(NMAT);
+    for (let mt = 0; mt < NMAT; mt++)
+      if (c[mt] > 0) quota[mt] = Math.max(1, Math.round(list.length * c[mt] / mk));
+
+    /* Every material present gets at least one mote, and the shell spawns
+     * however many that takes.  Capping the total at the bucket size
+     * instead silently drops whatever did not fit, which is a hole in the
+     * one thing this file promises: mass per material, exactly.          */
+    let cursor = 0;
+    for (let mt = 0; mt < NMAT; mt++) {
+      const n = quota[mt]; if (!n) continue;
+      const each = c[mt] / n;                 // exact: n motes carry this material's mass
+      for (let q = 0; q < n; q++, cursor++) {
+        const i = list[cursor % list.length];
+        const px = bx[i], py = by[i];
+        const wx = b.x + px * cs - py * sn, wy = b.y + px * sn + py * cs;
+        /* rigid rotation, so angular momentum carries into the cloud */
+        const vx = b.vx - b.spin * (wy - b.y), vy = b.vy + b.spin * (wx - b.x);
+        const id = Motes.spawn(wx, wy, vx, vy, each, mt, addHeat(mt, shells[k].T, dq), rMote);
+        if (id >= 0) out.push(id);
+      }
+    }
+  }
+  return out;
+}
+
+/* ---- spatial hash ----------------------------------------------------- *
+ *  One grid serves the contact pass, the neighbour count that drives
+ *  cooling, and the connectivity pass that splits clouds.                  */
+const Grid = {
+  head: new Int32Array(1 << 18),
+  next: new Int32Array(K.MOTE_CAP),
+  mask: (1 << 18) - 1,
+  cell: 1,
+  /* the table is sized to the mote count, not to the cap.  Clearing a
+   * quarter-million slots on every contact pass costs more than the
+   * contacts do.                                                          */
+  build(cellSize) {
+    this.cell = cellSize > 1e-6 ? cellSize : 1;
+    const M = Motes, n = M.count;
+    let size = 64; while (size < n * 2 && size < (1 << 18)) size <<= 1;
+    this.mask = size - 1;
+    this.head.fill(-1, 0, size);
+    const inv = 1 / this.cell;
+    for (let i = 0; i < n; i++) {
+      const k = this.key(Math.floor(M.x[i] * inv), Math.floor(M.y[i] * inv));
+      this.next[i] = this.head[k]; this.head[k] = i;
+    }
+  },
+  key(ix, iy) { return ((ix * 73856093) ^ (iy * 19349663)) & this.mask; },
+};
+
+/* ---- contacts --------------------------------------------------------- *
+ *  Positional, not spring forces.  A spring stiff enough to hold a world
+ *  up explodes the first time the clock runs at 60x; moving overlapping
+ *  motes apart cannot, whatever dt is.  The separation is mass-weighted,
+ *  so the centre of mass does not drift.  The normal impulse can only ever
+ *  reduce an approach speed, never create one, and what it takes out comes
+ *  back as heat.                                                           *
+ * ---------------------------------------------------------------------- */
+/* A spring stiff enough to hold a world up explodes the first time the
+ * clock runs at 60x.  A positional pass cannot, whatever dt is.
+ *
+ *  The solver runs in three parts each substep: gravity kicks and drifts,
+ *  the contact sweeps push overlapping motes apart by MOVING them, and the
+ *  velocity is then read back off the positions.  Reading it back is what
+ *  makes it lose energy, which is also what a pile of gravel does.
+ *
+ *  The guard that makes this safe is the design's own rule: the contact
+ *  pass may only ever REDUCE a speed, never create one.  A mote leaves a
+ *  substep no faster than gravity made it.  Without that bound a positional
+ *  solver pumps -- pushing a pile apart does work against its own gravity,
+ *  the pile falls back, and the fall is charged as heat again.  Measured,
+ *  that pump ran at eight times the cloud's whole mechanical budget.       */
+const PACK = 0.90;          // motes are uncompressed material; a pile weighs on itself
+const CONTACT_ITERS = 8;    // Gauss-Seidel, alternating direction, so constraints propagate
+const heatLedger = { joules: 0, created: 0 };
+const _px = new Float64Array(K.MOTE_CAP), _py = new Float64Array(K.MOTE_CAP);
+const _kx = new Float64Array(K.MOTE_CAP), _ky = new Float64Array(K.MOTE_CAP);
+
+function positionSolve() {
+  const M = Motes, n = M.count;
+  if (n < 2) return;
+  let maxR = 0;
+  for (let i = 0; i < n; i++) if (M.r[i] > maxR) maxR = M.r[i];
+  Grid.build(2 * maxR);
+  M.nb.fill(0, 0, n);
+  const inv = 1 / Grid.cell;
+  for (let pass = 0; pass < CONTACT_ITERS; pass++)
+    contactSweep(n, inv, pass === 0, pass & 1);
+}
+
+function contactSweep(n, inv, count, backward) {
+  const M = Motes;
+  for (let q = 0; q < n; q++) {
+    const i = backward ? n - 1 - q : q;
+    if (M.ghost[i]) continue;
+    const ix = Math.floor(M.x[i] * inv), iy = Math.floor(M.y[i] * inv);
+    for (let gx = ix - 1; gx <= ix + 1; gx++) for (let gy = iy - 1; gy <= iy + 1; gy++) {
+      let j = Grid.head[Grid.key(gx, gy)];
+      while (j >= 0) {
+        if (j > i && !M.ghost[j]) {
+          const dx = M.x[j] - M.x[i], dy = M.y[j] - M.y[i];
+          const rs = (M.r[i] + M.r[j]) * PACK;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < rs * rs && d2 > 1e-18) {
+            const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+            if (count) { if (M.nb[i] < 255) M.nb[i]++; if (M.nb[j] < 255) M.nb[j]++; }
+            const mi = M.m[i], mj = M.m[j], ms = mi + mj;
+            if (ms <= 0) { j = Grid.next[j]; continue; }
+            const push = Math.min((rs - d) * 0.6, M.r[i] + M.r[j]);
+            const wi = mj / ms, wj = mi / ms;      // mass-weighted, so the centre holds still
+            M.x[i] -= nx * push * wi; M.y[i] -= ny * push * wi;
+            M.x[j] += nx * push * wj; M.y[j] += ny * push * wj;
+          }
+        }
+        j = Grid.next[j];
+      }
+    }
+  }
+}
+
+/* The velocity solve is separate from the position solve and it is
+ * DIRECTIONAL: it removes the component of a pair's relative velocity
+ * along the line of centres, and only where that component is closing.
+ * Reading velocity back off the corrected positions instead lets a pair
+ * leave as fast as it arrived, which is a perfectly elastic bounce, and
+ * two worlds then rebound off each other instead of merging.             */
+/* Reading the velocity back off the corrected positions is what makes the
+ * pass lose energy, and it is also what stops it pumping.  Cancelling a
+ * mote's DISPLACEMENT while leaving its velocity pointing inward lets that
+ * velocity grow every substep under a load that never moves, and the mote
+ * eventually squirts out sideways carrying energy nobody paid for.  The
+ * readback is fully inelastic, which is what "rock arriving at rock keeps
+ * almost none of its approach speed" says.                                */
+function velocitiesFromPositions(h) {
+  const M = Motes, n = M.count;
+  for (let i = 0; i < n; i++) {
+    if (M.ghost[i]) continue;
+    M.vx[i] = (M.x[i] - _px[i]) / h;
+    M.vy[i] = (M.y[i] - _py[i]) / h;
+  }
+}
+
+const RESTITUTION = 0.04;     // kept for the body-scale hit-and-run impulse
+function velocitySolve() {
+  const M = Motes, n = M.count;
+  if (n < 2) return;
+  const inv = 1 / Grid.cell;
+  for (let i = 0; i < n; i++) {
+    if (M.ghost[i]) continue;
+    const ix = Math.floor(M.x[i] * inv), iy = Math.floor(M.y[i] * inv);
+    for (let gx = ix - 1; gx <= ix + 1; gx++) for (let gy = iy - 1; gy <= iy + 1; gy++) {
+      let j = Grid.head[Grid.key(gx, gy)];
+      while (j >= 0) {
+        if (j > i && !M.ghost[j]) {
+          const dx = M.x[j] - M.x[i], dy = M.y[j] - M.y[i];
+          const rs = (M.r[i] + M.r[j]) * 1.02;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < rs * rs && d2 > 1e-18) {
+            const d = Math.sqrt(d2), nx = dx / d, ny = dy / d;
+            const vn = (M.vx[j] - M.vx[i]) * nx + (M.vy[j] - M.vy[i]) * ny;
+            if (vn < 0) {                          // closing, so this can only reduce
+              const mi = M.m[i], mj = M.m[j], ms = mi + mj;
+              if (ms > 0) {
+                const jn = -(1 + RESTITUTION) * vn * (mi * mj / ms);
+                M.vx[i] -= jn * nx / mi; M.vy[i] -= jn * ny / mi;
+                M.vx[j] += jn * nx / mj; M.vy[j] += jn * ny / mj;
+              }
+            }
+          }
+        }
+        j = Grid.next[j];
+      }
+    }
+  }
+}
+
+/* ---- what the heat actually costs -------------------------------------- *
+ *  Charging every velocity the solver removes as heat looks right and is
+ *  a perpetual motion machine: a pile standing still under its own weight
+ *  is kicked by gravity and held by its contacts every single substep, and
+ *  none of that is dissipation, because the pile has not moved and its
+ *  potential energy has not changed.  Measured, it ran at a tenth of a
+ *  unit a step forever.
+ *
+ *  What a collapse really dissipates is the cloud's own mechanical energy:
+ *  the kinetic energy in its own frame plus the self-potential of a
+ *  uniform sphere, which is the same 3GM^2/5R the settling test uses.
+ *  Gravity's work cancels between the two, so what is left over is the
+ *  contacts, exactly.  It cannot dissipate more than the cloud has.       */
+function cloudMechanical() {
+  const M = Motes;
+  let E = 0;
+  for (const c of W.clumps) {
+    if (c.mass <= 0 || c.R <= 0) continue;
+    E -= 3 * K.G * c.mass * c.mass / (5 * c.R);
+  }
+  for (let i = 0; i < M.count; i++) {
+    const ci = M.clump[i]; if (ci < 0 || M.ghost[i]) continue;
+    const c = W.clumps[ci];
+    const ux = M.vx[i] - c.vx, uy = M.vy[i] - c.vy;
+    E += 0.5 * M.m[i] * (ux * ux + uy * uy);
+  }
+  return E;
+}
+
+/*  The books run both ways.  Charging every mechanical loss as heat while
+ *  letting every mechanical gain go free turns a cloud that merely
+ *  breathes into a furnace: the collapse half of each oscillation is
+ *  billed and the expansion half is not, and the temperature climbs
+ *  without limit on a cloud that is going nowhere.                        */
+function depositHeat(joulesSim) {
+  if (!joulesSim) return;
+  const M = Motes, n = M.count;
+  let w = 0;
+  for (let i = 0; i < n; i++) {
+    if (M.ghost[i] || M.clump[i] < 0) continue;
+    w += M.m[i] * (M.nb[i] + 0.25);
+  }
+  if (w <= 0) return;
+  heatLedger.joules += joulesSim;
+  const vel2J = SI.vel * SI.vel;
+  for (let i = 0; i < n; i++) {
+    if (M.ghost[i] || M.clump[i] < 0) continue;
+    const share = joulesSim * (M.nb[i] + 0.25) / w;      // per unit mass already
+    M.T[i] = addHeat(M.mat[i], M.T[i], share * vel2J);
+  }
+}
+
+const CP = [450, 1000, 710, 2100, 5200];      // J/kg/K
+function cpOf(mat) { return CP[mat]; }
+
+/* ---- enthalpy ---------------------------------------------------------- *
+ *  Temperature is not a linear function of energy.  A melt sitting at its
+ *  boiling point absorbs the latent heat of vaporisation without getting
+ *  any hotter, and silicate's is 1.3e7 J/kg, which is eight times what
+ *  melting it costs.  Adding energy straight to a temperature instead puts
+ *  a merged pair of Earths at 100,000 K, which is not a magma ocean and
+ *  not anything else either.                                              *
+ * ---------------------------------------------------------------------- */
+const LATENT = [
+  /* Fe  */ { fus: 2.47e5, boil: 3134, vap: 6.09e6 },
+  /* Si  */ { fus: 4.00e5, boil: 3200, vap: 1.30e7 },
+  /* C   */ { fus: 1.20e5, boil: 4300, vap: 6.00e7 },
+  /* H2O */ { fus: 3.34e5, boil: 373,  vap: 2.26e6 },
+  /* HHe */ { fus: 0,      boil: 0,    vap: 0 },
+];
+function enthalpy(mat, T) {
+  const cp = CP[mat], L = LATENT[mat], m = MATS[mat].melt;
+  if (!L.boil) return cp * T;
+  let h = cp * Math.min(T, m);
+  if (T <= m) return h;
+  h += L.fus + cp * (Math.min(T, L.boil) - m);
+  if (T <= L.boil) return h;
+  return h + L.vap + cp * (T - L.boil);
+}
+function tempFromEnthalpy(mat, h) {
+  const cp = CP[mat], L = LATENT[mat], m = MATS[mat].melt;
+  if (!L.boil) return h / cp;
+  const hm = cp * m;
+  if (h <= hm) return h / cp;
+  if (h <= hm + L.fus) return m;                       // melting, at constant T
+  const hb = hm + L.fus + cp * (L.boil - m);
+  if (h <= hb) return m + (h - hm - L.fus) / cp;
+  if (h <= hb + L.vap) return L.boil;                  // boiling, at constant T
+  return L.boil + (h - hb - L.vap) / cp;
+}
+/* add dq joules per kilogram and return where that leaves the temperature */
+function addHeat(mat, T, dq) {
+  if (!dq) return T;
+  return Math.max(AMBIENT_T, tempFromEnthalpy(mat, Math.max(0, enthalpy(mat, T) + dq)));
+}
+
+/* ---- clumps ----------------------------------------------------------- *
+ *  Re-split by spatial connectivity a few times a second, so when one
+ *  cloud pulls into two, each half starts holding itself together
+ *  separately.  That is what lets a stretched world pinch off a bead
+ *  instead of smearing into an endless string.                             *
+ * ---------------------------------------------------------------------- */
+const _uf = new Int32Array(K.MOTE_CAP);
+function ufFind(a) { while (_uf[a] !== a) { _uf[a] = _uf[_uf[a]]; a = _uf[a]; } return a; }
+function ufUnion(a, b) { a = ufFind(a); b = ufFind(b); if (a !== b) _uf[b] = a; }
+
+function rebuildClumps() {
+  const M = Motes, n = M.count;
+  W.clumps.length = 0;
+  if (!n) return;
+  let maxR = 0;
+  for (let i = 0; i < n; i++) if (M.r[i] > maxR) maxR = M.r[i];
+  const link = 2.2;   // a pile that has puffed a little is still one pile
+  Grid.build(2 * maxR * link);
+  const inv = 1 / Grid.cell;
+  for (let i = 0; i < n; i++) _uf[i] = i;
+
+  for (let i = 0; i < n; i++) {
+    const ix = Math.floor(M.x[i] * inv), iy = Math.floor(M.y[i] * inv);
+    for (let gx = ix - 1; gx <= ix + 1; gx++) for (let gy = iy - 1; gy <= iy + 1; gy++) {
+      let j = Grid.head[Grid.key(gx, gy)];
+      while (j >= 0) {
+        if (j > i) {
+          const dx = M.x[j] - M.x[i], dy = M.y[j] - M.y[i];
+          const rs = (M.r[i] + M.r[j]) * link;
+          if (dx * dx + dy * dy < rs * rs) ufUnion(i, j);
+        }
+        j = Grid.next[j];
+      }
+    }
+  }
+
+  const idx = new Map();
+  for (let i = 0; i < n; i++) {
+    const root = ufFind(i);
+    let c = idx.get(root);
+    if (c === undefined) {
+      c = W.clumps.length; idx.set(root, c);
+      W.clumps.push({ n: 0, mass: 0, cx: 0, cy: 0, vx: 0, vy: 0, R: 0, rmax: 0,
+                      comp: zeroComp(), L: 0, I: 0, omega: 0, rockT: 0, rockM: 0,
+                      axisRatio: 1, first: -1, settleAge: 0, ke: 0, mr2: 0, rfar: 0 });
+    }
+    M.clump[i] = c;
+  }
+  measureClumps();
+}
+
+/* Re-splitting by connectivity is the expensive half and runs a few times
+ * a second.  Measuring where each cloud IS is cheap and has to run every
+ * step: a monopole aimed at where the cloud was a second ago pulls every
+ * mote sideways, and after the self-force is removed that comes out as a
+ * shear that tears the cloud apart.                                       */
+function measureClumps() {
+  const M = Motes, n = M.count;
+  for (const c of W.clumps) {
+    c.n = 0; c.mass = 0; c.cx = 0; c.cy = 0; c.vx = 0; c.vy = 0;
+    c.R = 0; c.rmax = 0; c.rfar = 0; c.mr2 = 0; c.L = 0; c.I = 0; c.rockT = 0; c.rockM = 0;
+    c.first = -1; c.comp.fill(0);
+  }
+  /* one pass for mass and centre, a second for everything measured from it */
+  for (let i = 0; i < n; i++) {
+    if (M.clump[i] < 0 || M.ghost[i]) continue;
+    const c = W.clumps[M.clump[i]], m = M.m[i];
+    c.n++; c.mass += m; c.cx += M.x[i] * m; c.cy += M.y[i] * m;
+    c.vx += M.vx[i] * m; c.vy += M.vy[i] * m;
+    c.comp[M.mat[i]] += m;
+    if (M.mat[i] <= MAT.C) { c.rockM += m; c.rockT += m * M.T[i]; }
+    if (M.r[i] > c.rmax) c.rmax = M.r[i];
+    if (c.first < 0) c.first = i;
+  }
+  for (const c of W.clumps) {
+    if (c.mass > 0) { c.cx /= c.mass; c.cy /= c.mass; c.vx /= c.mass; c.vy /= c.mass; }
+    if (c.rockM > 0) c.rockT /= c.rockM;
+  }
+  /* second moments: angular momentum, spread, and how round it is */
+  const sxx = new Float64Array(W.clumps.length),
+        syy = new Float64Array(W.clumps.length),
+        sxy = new Float64Array(W.clumps.length);
+  for (let i = 0; i < n; i++) {
+    const ci = M.clump[i]; if (ci < 0 || M.ghost[i]) continue;
+    const c = W.clumps[ci], m = M.m[i];
+    const dx = M.x[i] - c.cx, dy = M.y[i] - c.cy;
+    const ux = M.vx[i] - c.vx, uy = M.vy[i] - c.vy;
+    c.L += m * (dx * uy - dy * ux);
+    c.I += m * (dx * dx + dy * dy);
+    sxx[ci] += m * dx * dx; syy[ci] += m * dy * dy; sxy[ci] += m * dx * dy;
+    c.mr2 += m * (dx * dx + dy * dy);
+    const rr = Math.hypot(dx, dy); if (rr > c.rfar) c.rfar = rr;
+  }
+  for (let k = 0; k < W.clumps.length; k++) {
+    const c = W.clumps[k];
+    c.omega = c.I > 1e-12 ? c.L / c.I : 0;
+    const a = sxx[k] / c.mass, b = syy[k] / c.mass, d = sxy[k] / c.mass;
+    const tr = a + b, det = a * b - d * d;
+    const disc = Math.max(0, tr * tr / 4 - det);
+    const l1 = tr / 2 + Math.sqrt(disc), l2 = tr / 2 - Math.sqrt(disc);
+    c.axisRatio = l1 > 1e-12 ? Math.sqrt(Math.max(0, l2) / l1) : 1;
+    /* the radius of the uniform sphere with this cloud's second moment.
+     * The furthest mote is not it: one stray puts the whole cloud's
+     * self-potential somewhere else, and that jump is a free joule.      */
+    c.R = Math.max(c.rmax, c.mass > 0 ? Math.sqrt(5 / 3 * c.mr2 / c.mass) : 0);
+  }
+}
+
+/* ---- the field a cloud makes on itself ---------------------------------- *
+ *  Pulling every mote toward the cloud's centre with the cloud's WHOLE
+ *  mass is right outside the cloud and badly wrong inside it: a mote near
+ *  the middle has almost no mass inside its own radius, and the full
+ *  monopole gives it an acceleration of several thousand.  The cloud
+ *  implodes, the contact pass shoves it back out, and it detonates.
+ *
+ *  Using a tabulated enclosed mass fixes the force and breaks the energy,
+ *  because a field that depends on the configuration is not conservative:
+ *  the profile shifts under the motes as they move and every shift is a
+ *  free joule.  Measured, that leak was eight times the cloud's whole
+ *  mechanical budget, and it came out as thirty thousand kelvin.
+ *
+ *  The uniform sphere is the honest monopole for a roughly round blob.
+ *  It is exact inside and out, it has no central singularity, and given a
+ *  mass and a radius it is a fixed central potential, so it conserves.
+ *  Its binding energy is 3GM^2/5R, which is the number §5 already tests
+ *  settling against.                                                      */
+function cloudAccel(M, R, d) {
+  if (R <= 1e-9) return 0;
+  if (d >= R) return K.G * M / (d * d + 1e-12);
+  return K.G * M * d / (R * R * R);
+}
+
+/* ---- mote dynamics ---------------------------------------------------- *
+ *  Motes feel only the heaviest handful of bodies, plus the monopole of
+ *  their own cloud.  Below the top six by mass nothing measurably pulls on
+ *  a mote, so a busy sky evaluates six sources per particle whatever is in
+ *  it.  Motes do not pull on each other pairwise; a roughly round blob is
+ *  dominated by its monopole, and that costs one pass instead of n^2.      *
+ *                                                                         *
+ *  Cohesion is a field, so a cloud that is not round pushes on itself.
+ *  The net of it is measured each step and handed back, because nothing
+ *  pulls on itself.                                                        *
+ * ---------------------------------------------------------------------- */
+Motes.ghost = new Uint8Array(K.MOTE_CAP);
+const _cax = new Float64Array(K.MOTE_CAP), _cay = new Float64Array(K.MOTE_CAP);
+let _cnx = new Float64Array(256), _cny = new Float64Array(256);
+let _clumpOrder = new Int32Array(0);
+function clumpScratch(nc) {
+  if (_cnx.length < nc) { _cnx = new Float64Array(nc * 2); _cny = new Float64Array(nc * 2); }
+  _cnx.fill(0, 0, nc); _cny.fill(0, 0, nc);
+}
+const escapedMass = zeroComp();
+const SCENE_BOUND = 400000;
+
+function topSources(n) {
+  const bs = W.bodies.slice().sort((a, b) => b.mass - a.mass);
+  return bs.slice(0, n);
+}
+
+function stepMotes(dt) {
+  const M = Motes, n = M.count;
+  if (!n) return;
+  const src = topSources(6);
+
+  /* body gravity */
+  for (let i = 0; i < n; i++) {
+    let ax = 0, ay = 0;
+    for (let s = 0; s < src.length; s++) {
+      const b = src[s];
+      const dx = b.x - M.x[i], dy = b.y - M.y[i];
+      const r2 = dx * dx + dy * dy + K.SOFT2;
+      const inv = b.mass / (r2 * Math.sqrt(r2));
+      ax += dx * inv; ay += dy * inv;
+    }
+    _cax[i] = ax; _cay[i] = ay;
+  }
+
+  /* Cloud cohesion.  A mote feels its OWN cloud as a uniform sphere with
+   * itself left out, and it feels the heaviest few other clouds as well.
+   *
+   * Leaving the other clouds out is what the design's monopole rule reads
+   * like, and it makes fragmentation permanent: the instant a shock puffs
+   * a melt into seven pieces the pieces stop attracting each other and
+   * drift apart in straight lines forever, no mote anywhere near escape
+   * velocity.  It also makes §8.6 impossible, because fragments sharing a
+   * patch of sky can never pull together into a body if they cannot feel
+   * each other.  The heaviest eight is the same bargain the top-six body
+   * rule strikes: a fixed number of sources per particle whatever is in
+   * the sky.                                                              */
+  const nc = W.clumps.length;
+  if (nc) {
+    clumpScratch(nc);
+    const netx = _cnx, nety = _cny;
+    let order = _clumpOrder;
+    if (order.length !== nc) order = _clumpOrder = new Int32Array(nc);
+    for (let k = 0; k < nc; k++) order[k] = k;
+    const top = Array.prototype.slice.call(order)
+      .sort((a, b) => W.clumps[b].mass - W.clumps[a].mass).slice(0, 8);
+    for (let i = 0; i < n; i++) {
+      if (M.ghost[i]) continue;
+      const own = M.clump[i];
+      for (let t = -1; t < top.length; t++) {
+        const ci = t < 0 ? own : top[t];
+        if (ci < 0 || (t >= 0 && ci === own)) continue;
+        const c = W.clumps[ci];
+        const Meff = ci === own ? c.mass - M.m[i] : c.mass;  // nothing pulls on itself
+        if (Meff <= 0) continue;
+        const dx = c.cx - M.x[i], dy = c.cy - M.y[i];
+        const d = Math.hypot(dx, dy);
+        if (d < 1e-12) continue;
+        const g = cloudAccel(Meff, c.R, d) / d;
+        const ax = dx * g, ay = dy * g;
+        _cax[i] += ax; _cay[i] += ay;
+        /* only a cloud's pull on ITSELF is spurious and has to be handed
+         * back; its pull on another cloud is real and stays               */
+        if (ci === own) { netx[ci] += M.m[i] * ax; nety[ci] += M.m[i] * ay; }
+      }
+    }
+    for (let i = 0; i < n; i++) {
+      if (M.ghost[i]) continue;
+      const ci = M.clump[i]; if (ci < 0) continue;
+      const c = W.clumps[ci]; if (c.mass <= 0) continue;
+      _cax[i] -= netx[ci] / c.mass; _cay[i] -= nety[ci] / c.mass;
+    }
+  }
+
+  /* symplectic (kick then drift), so a mote on a long orbit keeps it.
+   * Both the pre-drift position and the post-kick velocity are kept, so
+   * the contact solver can be read back against them.                     */
+  for (let i = 0; i < n; i++) {
+    if (M.ghost[i]) { M.x[i] += M.vx[i] * dt; M.y[i] += M.vy[i] * dt; continue; }
+    M.vx[i] += _cax[i] * dt; M.vy[i] += _cay[i] * dt;
+    _px[i] = M.x[i]; _py[i] = M.y[i];
+    _kx[i] = M.vx[i]; _ky[i] = M.vy[i];
+    M.x[i] += M.vx[i] * dt;  M.y[i] += M.vy[i] * dt;
+    M.age[i] += dt;
+  }
+}
+
+/* ---- differentiation --------------------------------------------------- *
+ *  While a cloud is molten, denser motes sink.  The drift rate is density
+ *  contrast over viscosity, and viscosity is steep in temperature, so
+ *  cooling races the sort.  A large hot melt separates almost completely;
+ *  a small or fast-cooling one freezes part-sorted, and that is where the
+ *  swirl comes from.  No noise is added anywhere to make it look swirly.   *
+ * ---------------------------------------------------------------------- */
+/* Denser motes sink at a TERMINAL speed set by density contrast over
+ * viscosity, the way Stokes settling works.  Adding that as an
+ * acceleration every step instead makes it integrate without bound and
+ * blows the cloud apart, which is what it did the first time.            */
+const DIFF_SPEED = 0.035, DIFF_RELAX = 4;
+function differentiate(dt) {
+  if (window.__noDiff) return;
+  const M = Motes, n = M.count, nc = W.clumps.length;
+  if (!n || !nc) return;
+  clumpScratch(nc);
+  const dvx = _cnx, dvy = _cny;
+  const meanRho = new Float64Array(nc);
+  for (let k = 0; k < nc; k++) {
+    const c = W.clumps[k]; let v = 0;
+    for (let mt = 0; mt < NMAT; mt++) v += c.comp[mt] / matRho(mt, c.rockT || 300);
+    meanRho[k] = v > 0 ? c.mass / v : 1;
+  }
+  const scratchX = _cax, scratchY = _cay;
+  for (let i = 0; i < n; i++) {
+    scratchX[i] = 0; scratchY[i] = 0;
+    if (M.ghost[i]) continue;
+    const ci = M.clump[i]; if (ci < 0) continue;
+    const c = W.clumps[ci];
+    if (c.n < 12 || c.R <= 0) continue;
+    const mob = mobility(M.mat[i], M.T[i]);
+    if (mob < 1e-3) continue;
+    const rho = matRho(M.mat[i], M.T[i]);
+    const contrast = (rho - meanRho[ci]) / meanRho[ci];
+    if (Math.abs(contrast) < 1e-3) continue;
+    const dx = c.cx - M.x[i], dy = c.cy - M.y[i];
+    const d = Math.hypot(dx, dy); if (d < 1e-9) continue;
+    const ux = dx / d, uy = dy / d;
+    const vff = Math.sqrt(K.G * c.mass / Math.max(c.R, 1e-6));
+    const target = DIFF_SPEED * clamp(contrast, -1, 1) * Math.min(1, mob) * vff;
+    const vr = (M.vx[i] - c.vx) * ux + (M.vy[i] - c.vy) * uy;   // radial, inward positive
+    const dv = (target - vr) * clamp(dt * DIFF_RELAX, 0, 0.5);
+    const ax = ux * dv, ay = uy * dv;
+    scratchX[i] = ax; scratchY[i] = ay;
+    dvx[ci] += M.m[i] * ax; dvy[ci] += M.m[i] * ay;
+  }
+  for (let i = 0; i < n; i++) {
+    const ci = M.clump[i]; if (ci < 0 || M.ghost[i]) continue;
+    const c = W.clumps[ci]; if (c.mass <= 0) continue;
+    M.vx[i] += scratchX[i] - dvx[ci] / c.mass;      // net removed: sorting is internal
+    M.vy[i] += scratchY[i] - dvy[ci] / c.mass;
+  }
+}
+
+/* ---- cooling ----------------------------------------------------------- *
+ *  Heat leaves through the surface.  A mote packed in among five or six
+ *  others is not the surface and holds its heat about twice as long as one
+ *  out on the skin; the neighbour count comes from the contact pass, which
+ *  is already visiting every touching pair.                                *
+ * ---------------------------------------------------------------------- */
+let AMBIENT_T = 30;
+function coolMotes(dt) {
+  const M = Motes, n = M.count;
+  if (!n) return;
+  const dtSI = dt * (K.SI_YEAR / YEAR_UNITS);
+  const amb4 = Math.pow(AMBIENT_T, 4);
+  for (let i = 0; i < n; i++) {
+    if (M.ghost[i]) continue;
+    const T = M.T[i];
+    if (T <= AMBIENT_T + 0.5) { M.T[i] = AMBIENT_T; continue; }
+    const rSI = SI.radius(M.r[i]), mSI = SI.mass(M.m[i]);
+    if (mSI <= 0 || rSI <= 0) continue;
+    const A = 4 * Math.PI * rSI * rSI;
+    const exposure = 1 / (1 + M.nb[i] / 6);
+    const P = K.SI_SB * A * (T * T * T * T - amb4) * exposure;
+    let dT = -P * dtSI / (mSI * cpOf(M.mat[i]));
+    if (dT < -(T - AMBIENT_T)) dT = -(T - AMBIENT_T);      // never overshoot ambient
+    M.T[i] = T + dT;
+  }
+}
+
+/* ====================================================================== *
+ *  5b. SETTLING: FROM MELT BACK TO WORLD                                 *
+ * ---------------------------------------------------------------------- *
+ *  A cloud becomes a body again when three things are true at once, none
+ *  of them on a timer:
+ *    1. its own binding energy beats the motion inside it, measured in its
+ *       own frame with the bulk rotation taken out.  Spin does not count;
+ *       a cloud turning as a whole is already a body.  It keeps the turn.
+ *    2. its rock is below the melting point, measured over the rock only.
+ *       Gas has no melting point, so two gas giants re-form as soon as
+ *       gravity has gathered them.
+ *    3. it is round, by the ratio of the principal axes of its own mass.
+ * ====================================================================== */
+const spriteGhosts = [];         // §5.4: nothing pops
+
+/* one pass over the motes fills every clump's internal kinetic energy,
+ * rather than one pass per clump.                                         */
+function clumpInternalKE() {
+  const M = Motes;
+  for (const c of W.clumps) c.ke = 0;
+  for (let i = 0; i < M.count; i++) {
+    const ci = M.clump[i];
+    if (ci < 0 || M.ghost[i]) continue;
+    const c = W.clumps[ci];
+    const dx = M.x[i] - c.cx, dy = M.y[i] - c.cy;
+    const ux = M.vx[i] - c.vx + c.omega * dy;      // bulk rotation removed
+    const uy = M.vy[i] - c.vy - c.omega * dx;
+    c.ke += 0.5 * M.m[i] * (ux * ux + uy * uy);
+  }
+}
+
+function rockMeltPoint(comp) {
+  let w = 0, s = 0;
+  for (let mt = 0; mt <= MAT.C; mt++) { w += comp[mt]; s += comp[mt] * MATS[mt].melt; }
+  return w > 0 ? s / w : 0;
+}
+
+/* how round a cloud has to be.  Under a real tide the equilibrium figure
+ * is prolate, so holding out for a sphere would mean nothing near a black
+ * hole ever pulled itself together again.  The allowance is the tide it is
+ * actually in, and with no tide it is the plain sphere test.              */
+function roundnessFloor(c) {
+  let worst = 0;
+  for (const b of W.bodies) {
+    const dx = b.x - c.cx, dy = b.y - c.cy;
+    const d = Math.hypot(dx, dy);
+    if (d < 1e-6) continue;
+    const q = (b.mass / (c.mass + 1e-30)) * Math.pow(c.R / d, 3);
+    if (q > worst) worst = q;
+  }
+  return clamp(0.72 - 1.6 * Math.min(worst, 0.3), 0.30, 0.72);
+}
+
+function trySettle() {
+  const M = Motes;
+  clumpInternalKE();
+  for (let ci = 0; ci < W.clumps.length; ci++) {
+    const c = W.clumps[ci];
+    if (c.n < 10 || c.mass <= 0 || c.R <= 0) continue;
+
+    const bind = 3 * K.G * c.mass * c.mass / (5 * c.R);
+    const ke = c.ke;
+    if (ke >= bind) { c.settleAge = 0; continue; }
+
+    const rockFrac = (c.comp[MAT.Fe] + c.comp[MAT.Si] + c.comp[MAT.C]) / c.mass;
+    if (rockFrac > 0.05 && c.rockT > rockMeltPoint(c.comp)) { c.settleAge = 0; continue; }
+
+    if (c.axisRatio < roundnessFloor(c)) { c.settleAge = 0; continue; }
+
+    settleClump(ci, c);
+    return;                                   // one per pass; the rest re-check next time
+  }
+}
+
+function settleClump(ci, c) {
+  const M = Motes;
+  const members = [];
+  for (let i = 0; i < M.count; i++) if (M.clump[i] === ci && !M.ghost[i]) members.push(i);
+  if (members.length < 4) return;
+
+  /* radial bins by cumulative mass, so a well-sorted melt gives near-pure
+   * shells and a part-sorted one gives mixed ones.  The interruption is
+   * the record of how the collision went, and it is kept.                 */
+  members.sort((a, b) => {
+    const da = (M.x[a] - c.cx) ** 2 + (M.y[a] - c.cy) ** 2;
+    const db = (M.x[b] - c.cx) ** 2 + (M.y[b] - c.cy) ** 2;
+    return da - db;
+  });
+  const nBins = c.mass >= DIFF_MASS ? 4 : 1;
+  const per = c.mass / nBins;
+  const shells = [];
+  let acc = zeroComp(), accM = 0, accT = 0;
+  for (let k = 0; k < members.length; k++) {
+    const i = members[k];
+    acc[M.mat[i]] += M.m[i]; accM += M.m[i]; accT += M.m[i] * M.T[i];
+    const done = (shells.length < nBins - 1 && accM >= per * (shells.length + 1)) ||
+                 k === members.length - 1;
+    if (done) {
+      shells.push({ comp: acc, T: accM > 0 ? accT / accM : AMBIENT_T });
+      acc = zeroComp(); accM = 0; accT = 0;
+    }
+  }
+  if (!shells.length) return;
+
+  const b = new Body({ x: c.cx, y: c.cy, vx: c.vx, vy: c.vy, shells, spin: c.omega });
+  b.surfaceMap = projectSurface(members, c, b.radius);
+  W.bodies.push(b);
+  W.events.push({ kind: 'settle', id: b.id, t: W.t });
+
+  /* the motes it was made of stay, weightless and no longer part of
+   * anything, to fall the last of the way in.  Their mass is already in
+   * the body, so the books balance during the fade.                       */
+  for (const i of members) {
+    M.m[i] = 0; M.ghost[i] = 1; M.age[i] = 0; M.clump[i] = -1;
+    const dx = b.x - M.x[i], dy = b.y - M.y[i];
+    const d = Math.hypot(dx, dy) || 1;
+    M.vx[i] = b.vx + dx / d * 0.4; M.vy[i] = b.vy + dy / d * 0.4;
+  }
+}
+
+/* ---- the sprite is projected, not generated ---------------------------- *
+ *  For each pixel of the new body's disc, take the outermost mote along
+ *  that line and paint its material at its temperature.  Two identical
+ *  collisions give two different worlds, and none of it is authored.      *
+ * ---------------------------------------------------------------------- */
+const SURF_N = 44;
+function projectSurface(members, c, bodyRadius) {
+  const M = Motes;
+  const mat = new Uint8Array(SURF_N * SURF_N).fill(255);
+  const T = new Float32Array(SURF_N * SURF_N);
+  const span = Math.max(c.R, 1e-6);
+  /* bucket the members so the lookup is not members-squared */
+  const cell = Math.max(span * 2 / SURF_N, 1e-9);
+  const buckets = new Map();
+  for (const i of members) {
+    const gx = Math.floor((M.x[i] - c.cx) / cell), gy = Math.floor((M.y[i] - c.cy) / cell);
+    const k = gx * 8192 + gy;
+    let a = buckets.get(k); if (!a) buckets.set(k, a = []);
+    a.push(i);
+  }
+  for (let v = 0; v < SURF_N; v++) for (let u = 0; u < SURF_N; u++) {
+    const nx = (u + 0.5) / SURF_N * 2 - 1, ny = (v + 0.5) / SURF_N * 2 - 1;
+    if (nx * nx + ny * ny > 1) continue;
+    const px = nx * span, py = ny * span;
+    const gx = Math.floor(px / cell), gy = Math.floor(py / cell);
+    let best = -1, bd = Infinity;
+    for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
+      const a = buckets.get((gx + ox) * 8192 + (gy + oy)); if (!a) continue;
+      for (const i of a) {
+        const dx = (M.x[i] - c.cx) - px, dy = (M.y[i] - c.cy) - py;
+        const d = dx * dx + dy * dy;
+        if (d < bd) { bd = d; best = i; }
+      }
+    }
+    if (best < 0) continue;
+    mat[v * SURF_N + u] = M.mat[best]; T[v * SURF_N + u] = M.T[best];
+  }
+  /* fill any gap by nearest neighbour that did land */
+  for (let pass = 0; pass < 3; pass++) {
+    let filled = 0;
+    for (let v = 0; v < SURF_N; v++) for (let u = 0; u < SURF_N; u++) {
+      const k = v * SURF_N + u;
+      if (mat[k] !== 255) continue;
+      const nx = (u + 0.5) / SURF_N * 2 - 1, ny = (v + 0.5) / SURF_N * 2 - 1;
+      if (nx * nx + ny * ny > 1) continue;
+      for (const [du, dv] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+        const uu = u + du, vv = v + dv;
+        if (uu < 0 || vv < 0 || uu >= SURF_N || vv >= SURF_N) continue;
+        const kk = vv * SURF_N + uu;
+        if (mat[kk] !== 255) { mat[k] = mat[kk]; T[k] = T[kk]; filled++; break; }
+      }
+    }
+    if (!filled) break;
+  }
+  return { n: SURF_N, mat, T };
+}
+
+/* ---- a body swallowing a mote ------------------------------------------ *
+ *  Take its mass AND its motion.  Taking the mass and leaving the motion
+ *  behind is the first of the four places momentum historically leaked.    *
+ * ---------------------------------------------------------------------- */
+function absorbMotes() {
+  const M = Motes;
+  const bs = W.bodies;
+  if (!bs.length) return;
+  for (let i = M.count - 1; i >= 0; i--) {
+    if (M.ghost[i]) {
+      if (M.age[i] > 0.0) { /* ghosts are removed by their fade timer in tick() */ }
+      continue;
+    }
+    for (let k = 0; k < bs.length; k++) {
+      const b = bs[k];
+      const dx = M.x[i] - b.x, dy = M.y[i] - b.y;
+      if (dx * dx + dy * dy > b.radius * b.radius) continue;
+      const m = M.m[i], Mb = b.mass, tot = Mb + m;
+      if (tot <= 0) break;
+      const rvx = M.vx[i] - b.vx, rvy = M.vy[i] - b.vy;
+      /* exact: momentum and centre of mass both carry over */
+      b.x = (b.x * Mb + M.x[i] * m) / tot;
+      b.y = (b.y * Mb + M.y[i] * m) / tot;
+      b.vx = (b.vx * Mb + M.vx[i] * m) / tot;
+      b.vy = (b.vy * Mb + M.vy[i] * m) / tot;
+      /* it landed on the outside, so that is the shell it joins */
+      const sh = b.shells[b.shells.length - 1];
+      const shM = compTotal(sh.comp);
+      const kinetic = 0.5 * (Mb * m / tot) * (rvx * rvx + rvy * rvy) * SI.vel * SI.vel;
+      sh.comp[M.mat[i]] += m;
+      const cpS = 1000;
+      sh.T = addHeat(dominantMat(sh.comp), (sh.T * shM + M.T[i] * m) / (shM + m),
+                     kinetic / SI.mass(shM + m));
+      b.refresh(); b.spriteKey = '';
+      M.remove(i);
+      break;
+    }
+  }
+}
+
+function cullMotes(dt) {
+  const M = Motes;
+  for (let i = M.count - 1; i >= 0; i--) {
+    if (M.ghost[i]) {
+      M.age[i] += dt;
+      if (M.age[i] > 0.35 * Math.max(W.rate, 1e-6)) M.remove(i);
+      continue;
+    }
+    if (Math.abs(M.x[i]) > SCENE_BOUND || Math.abs(M.y[i]) > SCENE_BOUND) {
+      escapedMass[M.mat[i]] += M.m[i];        // gone from the view, not from the books
+      M.remove(i);
+    }
+  }
+}
+
+/* ====================================================================== *
+ *  6. COLLISIONS                                                         *
+ * ---------------------------------------------------------------------- *
+ *  Two worlds meeting is never resolved in one frame, however gently they
+ *  arrive.  There is no merge instruction anywhere in this file that fires
+ *  on contact.
+ *
+ *  Both measurements are taken off the APPROACH, not off the overlap: the
+ *  overlap is nearly zero at the instant they first touch and tells you
+ *  nothing.  Everything below runs in SI, restored from display units, so
+ *  the two admitted exaggerations (mass lifted 20x, size lifted 80x) do
+ *  not leak into the energetics.
+ * ====================================================================== */
+
+/* specific gravitational binding energy of a sphere, J/kg */
+function bindSpecific(massSim, radiusDisplay) {
+  const M = SI.mass(massSim), R = SI.radius(radiusDisplay);
+  return R > 0 ? 3 * K.SI_G * M / (5 * R) : 0;
+}
+function bindTotal(massSim, radiusDisplay) {
+  const M = SI.mass(massSim), R = SI.radius(radiusDisplay);
+  return R > 0 ? 3 * K.SI_G * M * M / (5 * R) : 0;
+}
+
+/* Leinhardt & Stewart's catastrophic disruption threshold in the gravity
+ * regime, c* = 5 for rock.  This is NOT the binding energy: taking a body
+ * apart costs about three times what holding it together is worth, because
+ * most of what you put in comes back out as heat rather than as escape.   */
+function QstarRD(massSim) {
+  const M = SI.mass(massSim);
+  if (M <= 0) return Infinity;
+  const rho1 = 1000;
+  const Rc1 = Math.cbrt(3 * M / (4 * Math.PI * rho1));
+  return 5 * 0.8 * Math.PI * rho1 * K.SI_G * Rc1 * Rc1;
+}
+
+/* mass-weighted specific energy needed to bring a composition to the melt */
+function meltSpecific(comp) {
+  const M = compTotal(comp); if (M <= 0) return Infinity;
+  let s = 0, w = 0;
+  for (let mt = 0; mt < NMAT; mt++) {
+    if (!isFinite(MATS[mt].qMelt)) continue;
+    s += comp[mt] * MATS[mt].qMelt; w += comp[mt];
+  }
+  return w > 0 ? s / w : Infinity;
+}
+
+function measureImpact(a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const dvx = b.vx - a.vx, dvy = b.vy - a.vy;
+  const v = Math.hypot(dvx, dvy);
+  const rs = a.radius + b.radius;
+
+  /* impact parameter: how far the line one is travelling along misses the
+   * other's centre by, as a fraction of the sum of radii.                 */
+  let bp = 1;
+  if (v > 1e-12) bp = clamp(Math.abs(dx * dvy - dy * dvx) / (v * rs), 0, 1);
+
+  const Mtot = a.mass + b.mass;
+  const mu = a.mass * b.mass / Mtot;
+  const Qkin = 0.5 * mu * v * v / Mtot * SI.vel * SI.vel;      // J/kg
+
+  /* §4.1 puts a floor under Q: assembling one body out of two releases
+   * gravitational energy whether they were moving beforehand or not.
+   * That is true, and adding it here as a term is wrong, because the
+   * motes then release it a SECOND time when they fall together and their
+   * contacts dissipate the fall.  The pieces a collision throws are the
+   * blast; the heat an assembly releases is the fall.  Counting both put
+   * a merged pair of Earths at 24,000 K before anything had moved.
+   * It is reported so a caller can see it, and it is not delivered.      */
+  const comb = zeroComp(); compAdd(comb, a.comp); compAdd(comb, b.comp);
+  const Rcomb = radiusOf(comb);
+  const dE = bindTotal(Mtot, Rcomb) - bindTotal(a.mass, a.radius) - bindTotal(b.mass, b.radius);
+  const Qgrav = Math.max(0, dE) / SI.mass(Mtot);
+
+  return { b: bp, v, Qkin, Qgrav, Q: Qkin, Mtot, mu,
+           Qstar: QstarRD(Mtot), ratio: Math.min(a.mass, b.mass) / Math.max(a.mass, b.mass) };
+}
+
+/* ---- envelope stripping precedes everything ---------------------------- *
+ *  H/He is bound by almost nothing.  Any impact energetic enough to matter
+ *  removes some fraction of both envelopes before it touches the rock, and
+ *  that fraction leaves at the speed the envelope had.  This is the
+ *  mechanism that turns giants into cores and it needs no other code path. *
+ * ---------------------------------------------------------------------- */
+function stripEnvelope(b, Q) {
+  const env = b.shells[b.shells.length - 1];
+  if (!env) return 0;
+  const hh = env.comp[MAT.HHe];
+  if (hh <= 0) return 0;
+  /* an envelope sits at the surface, so what holds it is GM/R per kg */
+  const Qenv = K.SI_G * SI.mass(b.mass) / Math.max(SI.radius(b.radius), 1);
+  const frac = 1 - Math.exp(-Q / Math.max(Qenv, 1));
+  const lost = hh * frac;
+  if (lost <= 0) return 0;
+  env.comp[MAT.HHe] -= lost;
+  const vesc = b.escapeSpeed();
+  const n = clamp(Math.round(60 * frac) + 8, 8, 400);
+  const each = lost / n;
+  const rM = b.radius * Math.sqrt(0.85 / n);
+  let sx = 0, sy = 0;
+  const vs = [];
+  for (let i = 0; i < n; i++) {
+    const th = TAU * (i + rnd()) / n;
+    const s = vesc * (1.05 + 0.5 * rnd());
+    vs.push([Math.cos(th) * s, Math.sin(th) * s, th]);
+    sx += Math.cos(th) * s; sy += Math.sin(th) * s;
+  }
+  sx /= n; sy /= n;                       // net removed: the shell leaves, it is not pushed
+  for (let i = 0; i < n; i++) {
+    const [ux, uy, th] = vs[i];
+    Motes.spawn(b.x + Math.cos(th) * b.radius, b.y + Math.sin(th) * b.radius,
+                b.vx + ux - sx, b.vy + uy - sy, each, MAT.HHe, env.T, rM);
+  }
+  if (compTotal(env.comp) <= 0) b.shells.pop();
+  b.refresh(); b.spriteKey = '';
+  return lost;
+}
+
+function retireBody(b) {
+  const k = W.bodies.indexOf(b);
+  if (k >= 0) W.bodies.splice(k, 1);
+  if (b.sprite) spriteGhosts.push({ img: b.sprite, x: b.x, y: b.y, vx: b.vx, vy: b.vy,
+                                    r: b.radius, life: 0 });
+  if (UI.selected === b) UI.select(null);
+  if (UI.follow === b) UI.follow = null;
+}
+
+/* how the delivered energy is shared out over the stack: outer shells take
+ * more of it.  Cores are deep and dense and mostly survive as cores;
+ * mantles splash; envelopes are already gone.                             */
+function shellHeat(body, Q) {
+  const n = body.shells.length, out = new Float64Array(n);
+  if (!n) return out;
+  let wsum = 0; const w = new Float64Array(n);
+  for (let k = 0; k < n; k++) {
+    const rMid = (k === 0 ? 0 : body.shellR[k - 1] + body.shellR[k]) / (k === 0 ? 1 : 2) || body.shellR[0] / 2;
+    w[k] = Math.pow(clamp(rMid / body.radius, 0.05, 1), 1.5);
+    wsum += w[k] * compTotal(body.shells[k].comp);
+  }
+  if (wsum <= 0) return out;
+  const scale = Q * SI.mass(body.mass) / wsum;      // total joules, shared by depth
+  for (let k = 0; k < n; k++) {
+    const mk = compTotal(body.shells[k].comp);
+    if (mk <= 0) continue;
+    out[k] = scale * w[k] * mk / SI.mass(mk);      // joules per kilogram
+  }
+  return out;
+}
+function dominantMat(c) { let b = 0; for (let i = 1; i < NMAT; i++) if (c[i] > c[b]) b = i; return b; }
+
+function resolveCollisions() {
+  const bs = W.bodies;
+  for (let i = 0; i < bs.length; i++) {
+    for (let j = i + 1; j < bs.length; j++) {
+      const a = bs[i], b = bs[j];
+      if (!a || !b) continue;
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const rs = a.radius + b.radius;
+      if (dx * dx + dy * dy > rs * rs) continue;
+
+      const im = measureImpact(a, b);
+      const big = a.mass >= b.mass ? a : b, small = big === a ? b : a;
+
+      stripEnvelope(a, im.Q); stripEnvelope(b, im.Q);
+      if (a.mass <= 0 || b.mass <= 0) { if (a.mass <= 0) retireBody(a); if (b.mass <= 0) retireBody(b); return; }
+
+      /* --- accretion: it is caught, not mixed ------------------------- */
+      if (im.ratio < 0.04 && im.Q < 0.08 * im.Qstar) {
+        accrete(big, small, im);
+        return;
+      }
+      /* --- hit-and-run: the bodies clip ------------------------------- */
+      if (im.b > 0.6) {
+        hitAndRun(a, b, im);
+        return;
+      }
+      /* --- merging through a melt: everything else -------------------- */
+      meltMerge(a, b, im);
+      return;
+    }
+  }
+}
+
+function accrete(big, small, im) {
+  const sh = big.shells[big.shells.length - 1];
+  const shM = compTotal(sh.comp);
+  const joules = im.Q * SI.mass(im.Mtot);
+  const Mb = big.mass, m = small.mass, tot = Mb + m;
+  big.x = (big.x * Mb + small.x * m) / tot;
+  big.y = (big.y * Mb + small.y * m) / tot;
+  big.vx = (big.vx * Mb + small.vx * m) / tot;
+  big.vy = (big.vy * Mb + small.vy * m) / tot;
+  compAdd(sh.comp, small.comp);
+  const newM = shM + m;
+  sh.T = addHeat(dominantMat(sh.comp), (sh.T * shM + small.meanT() * m) / newM,
+                 joules / SI.mass(newM));
+  big.refresh(); big.spriteKey = '';
+  W.events.push({ kind: 'accrete', id: big.id, ate: small.id, t: W.t });
+  retireBody(small);
+}
+
+/* the sprite pixels that would be inside the other body at closest
+ * approach are scraped off both, each carrying the material of the shell
+ * it was scraped from, which for a grazing hit is the envelope and the
+ * shell and never the core.                                               */
+function hitAndRun(a, b, im) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const d = Math.hypot(dx, dy) || 1e-9;
+  const over = clamp((a.radius + b.radius - d) / Math.min(a.radius, b.radius), 0, 1);
+  const scraped = [];
+  let px = 0, py = 0, pm = 0;
+
+  for (const [o, other] of [[a, b], [b, a]]) {
+    const frac = clamp(over * 0.5 * (other.mass / (o.mass + other.mass)) * 2, 0, 0.6);
+    if (frac <= 1e-6) { scraped.push(null); continue; }
+    const heat = shellHeat(o, im.Q);
+    const ids = scrapeOuter(o, frac, heat);
+    for (const i of ids) { px += Motes.m[i] * Motes.vx[i]; py += Motes.m[i] * Motes.vy[i]; pm += Motes.m[i]; }
+    scraped.push(ids);
+  }
+  if (pm > 0) {
+    /* what was torn loose off both bodies mixes; total momentum is
+     * unchanged because the mixed velocity is the mass-weighted one.      */
+    const ux = px / pm, uy = py / pm;
+    for (const ids of scraped) {
+      if (!ids) continue;
+      for (const i of ids) { Motes.vx[i] = lerp(Motes.vx[i], ux, 0.55); Motes.vy[i] = lerp(Motes.vy[i], uy, 0.55); }
+    }
+  }
+  /* the surviving parts also touch: an equal and opposite impulse pair */
+  const nx = dx / d, ny = dy / d;
+  const vn = (b.vx - a.vx) * nx + (b.vy - a.vy) * ny;
+  if (vn < 0) {
+    const mu = a.mass * b.mass / (a.mass + b.mass);
+    const jn = -(1 + 0.25) * vn * mu * over;
+    a.vx -= jn * nx / a.mass; a.vy -= jn * ny / a.mass;
+    b.vx += jn * nx / b.mass; b.vy += jn * ny / b.mass;
+  }
+  a.hitCool = b.hitCool = W.t + 0.4;
+  W.events.push({ kind: 'graze', a: a.id, b: b.id, bParam: im.b, t: W.t });
+}
+
+/* take mass off the OUTSIDE of a stack, shell by shell from the top */
+function scrapeOuter(body, frac, heat) {
+  let want = body.mass * frac;
+  const ids = [];
+  const R = body.radius;
+  for (let k = body.shells.length - 1; k >= 0 && want > 1e-15; k--) {
+    const sh = body.shells[k], shM = compTotal(sh.comp);
+    if (shM <= 0) continue;
+    const take = Math.min(shM, want); want -= take;
+    const f = take / shM;
+    const n = clamp(Math.round(140 * f) + 6, 6, 500);
+    const rM = R * Math.sqrt(0.85 / (n * 3));
+    const inner = k === 0 ? 0 : body.shellR[k - 1], outer = body.shellR[k];
+    const dq = heat ? heat[k] || 0 : 0;
+    for (let mt = 0; mt < NMAT; mt++) {
+      const mm = sh.comp[mt] * f;
+      if (mm <= 0) continue;
+      const cnt = Math.max(1, Math.round(n * (sh.comp[mt] / shM)));
+      const each = mm / cnt;
+      for (let q = 0; q < cnt; q++) {
+        const th = TAU * rnd(), rr = lerp(inner, outer, rnd());
+        const id = Motes.spawn(body.x + Math.cos(th) * rr, body.y + Math.sin(th) * rr,
+                               body.vx, body.vy, each, mt, addHeat(mt, sh.T, dq), rM);
+        if (id >= 0) ids.push(id);
+      }
+      sh.comp[mt] -= mm;
+    }
+  }
+  for (let k = body.shells.length - 1; k >= 0; k--)
+    if (compTotal(body.shells[k].comp) <= 1e-18) body.shells.splice(k, 1);
+  if (!body.shells.length) { retireBody(body); return ids; }
+  body.refresh(); body.spriteKey = '';
+  return ids;
+}
+
+/* both bodies go liquid: every pixel of both, molten, still carrying the
+ * velocity it came in with and its own material.  From there it is only
+ * motes.  Nothing decides what comes out; §5 does.                        */
+function meltMerge(a, b, im) {
+  /* No heat is deposited here.  The motes keep the velocity they came in
+   * with, so the approach energy is still in the simulation, and the
+   * contact pass turns it into heat as the two clouds drive through each
+   * other.  Depositing it here as well is the same energy twice, which is
+   * §6.1's fourth leak wearing a different hat: the pieces a collision
+   * throws ARE the blast.                                                 */
+  shatterBody(a);
+  shatterBody(b);
+  W.events.push({ kind: 'melt', a: a.id, b: b.id, Q: im.Q, Qstar: im.Qstar,
+                  bParam: im.b, t: W.t });
+  retireBody(a); retireBody(b);
+}
+
+/* ====================================================================== *
+ *  7. STELLAR EVOLUTION                                                  *
+ * ---------------------------------------------------------------------- *
+ *  Not built yet (design step 7).  What is here is the part the rest of
+ *  the file already depends on: a fusing body carries a DEGENERATE core
+ *  mass tracked separately from its total, because Chandrasekhar is a
+ *  limit on a core and not on a star.  A 20 solar-mass star leaves a 1.5
+ *  solar-mass neutron star; it does not collapse because it weighs 20.
+ *  Collapse is gated on two conditions together: the core has fused
+ *  through to something that cannot burn, AND its degenerate mass passes
+ *  the limit.
+ * ====================================================================== */
+const CHANDRASEKHAR = 1.44;                 // solar masses, on the CORE
+const NS_MAX = 2.6;                         // Tolman-Oppenheimer-Volkoff, roughly
+function solarMasses(simMass) { return SI.mass(simMass) / K.SI_MSUN; }
+function coreCanCollapse(b) {
+  return b.fusing && b.coreFuel <= 0 && solarMasses(b.coreMass) >= CHANDRASEKHAR;
+}
+
+/* ====================================================================== *
+ *  8. RENDERING                                                          *
+ * ---------------------------------------------------------------------- *
+ *  Everything is drawn into a buffer several times smaller than the window
+ *  and blown up with image-rendering: pixelated.  That is the pixel art,
+ *  and it is also why a few hundred thousand motes are affordable.
+ * ====================================================================== */
+const sky = document.getElementById('sky');
+const skyCtx = sky.getContext('2d', { alpha: false });
+const PIXEL = 4;
+const buf = document.createElement('canvas');
+const bctx = buf.getContext('2d', { alpha: false, willReadFrequently: true });
+let BW = 0, BH = 0, frame = null, fdata = null, dens = null;
+
+const cam = { x: 0, y: 0, scale: 1, target: 1 };
+
+function resize() {
+  const w = window.innerWidth, h = window.innerHeight;
+  sky.width = Math.max(1, Math.floor(w * devicePixelRatio / PIXEL) * PIXEL / devicePixelRatio * devicePixelRatio);
+  sky.width = Math.max(1, Math.round(w * devicePixelRatio));
+  sky.height = Math.max(1, Math.round(h * devicePixelRatio));
+  sky.style.width = w + 'px'; sky.style.height = h + 'px';
+  BW = Math.max(64, Math.ceil(sky.width / PIXEL));
+  BH = Math.max(64, Math.ceil(sky.height / PIXEL));
+  buf.width = BW; buf.height = BH;
+  frame = bctx.createImageData(BW, BH);
+  fdata = frame.data;
+  dens = new Uint16Array(BW * BH);
+  skyCtx.imageSmoothingEnabled = false;
+  bctx.imageSmoothingEnabled = false;
+  for (const b of W.bodies) b.spriteKey = '';
+}
+addEventListener('resize', resize);
+
+const w2sx = wx => (wx - cam.x) * cam.scale + BW / 2;
+const w2sy = wy => (wy - cam.y) * cam.scale + BH / 2;
+const s2wx = sx => (sx - BW / 2) / cam.scale + cam.x;
+const s2wy = sy => (sy - BH / 2) / cam.scale + cam.y;
+/* client pixels -> buffer pixels */
+const c2bx = cx => cx * devicePixelRatio / PIXEL;
+const c2by = cy => cy * devicePixelRatio / PIXEL;
+
+/* ---- value noise ------------------------------------------------------ */
+function hash2(x, y, s) {
+  let h = x * 374761393 + y * 668265263 + s * 2147483647;
+  h = (h ^ (h >> 13)) * 1274126177;
+  return ((h ^ (h >> 16)) >>> 0) / 4294967296;
+}
+function vnoise(x, y, s) {
+  const xi = Math.floor(x), yi = Math.floor(y);
+  const xf = x - xi, yf = y - yi;
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+  const a = hash2(xi, yi, s), b = hash2(xi + 1, yi, s);
+  const c = hash2(xi, yi + 1, s), d = hash2(xi + 1, yi + 1, s);
+  return lerp(lerp(a, b, u), lerp(c, d, u), v);
+}
+function fbm(x, y, s, oct) {
+  let v = 0, amp = 0.5, f = 1, norm = 0;
+  for (let i = 0; i < (oct || 4); i++) { v += amp * vnoise(x * f, y * f, s + i * 71); norm += amp; amp *= 0.5; f *= 2.07; }
+  return v / norm;
+}
+
+/* ---- sprites are generated, not drawn --------------------------------- *
+ *  Value noise shaded against a sphere normal, coloured from a material-
+ *  and-temperature ramp.  A body that settled out of a melt carries a
+ *  surface map projected from its own motes (§5.3); the detail below goes
+ *  ON TOP of that map rather than instead of it.                          *
+ * ---------------------------------------------------------------------- */
+function lightDir(b) {
+  let best = null, score = 0;
+  for (const o of W.bodies) {
+    if (o === b) continue;
+    const l = o.fusing ? (o.lum || 1) : (o.surfaceT() > 1400 ? 0.03 : 0);
+    if (l <= 0) continue;
+    const d2 = (o.x - b.x) ** 2 + (o.y - b.y) ** 2 + 1e-9;
+    const s = l / d2;
+    if (s > score) { score = s; best = o; }
+  }
+  if (!best) return [0.55, -0.45, 0.70];
+  const dx = best.x - b.x, dy = best.y - b.y, d = Math.hypot(dx, dy) || 1;
+  return [dx / d, dy / d, 0.35];
+}
+
+function pickShellMat(comp, u) {
+  const t = compTotal(comp); if (t <= 0) return MAT.Si;
+  let acc = 0;
+  for (let mt = 0; mt < NMAT; mt++) { acc += comp[mt] / t; if (u <= acc) return mt; }
+  return dominantMat(comp);
+}
+
+function buildSprite(b, Rpx) {
+  const S = Rpx * 2 + 2;
+  const img = bctx.createImageData(S, S);
+  const d = img.data;
+  const L = lightDir(b);
+  const Lm = Math.hypot(L[0], L[1], L[2]) || 1;
+  const lx = L[0] / Lm, ly = L[1] / Lm, lz = L[2] / Lm;
+  const outer = b.shells[b.shells.length - 1] || { comp: zeroComp(), T: 0 };
+  const gas = b.frac(MAT.HHe) > 0.15;
+  const star = b.fusing;
+  const Tsurf = outer.T;
+  const seed = b.seed;
+  const sm = b.surfaceMap;
+  const rough = b.mass < DIFF_MASS * 40;         // small bodies keep their craters
+  const ang = b.angle;
+  const ca = Math.cos(ang), sa = Math.sin(ang);
+
+  for (let py = 0; py < S; py++) {
+    const ny = (py + 0.5 - S / 2) / Rpx;
+    for (let px = 0; px < S; px++) {
+      const nx = (px + 0.5 - S / 2) / Rpx;
+      const rr = nx * nx + ny * ny;
+      const k = (py * S + px) * 4;
+      if (rr > 1) { d[k + 3] = 0; continue; }
+      const nz = Math.sqrt(1 - rr);
+
+      /* rotate the sample point so the surface turns with the body */
+      const sx = nx * ca + nz * sa, sz = -nx * sa + nz * ca;
+      const lon = Math.atan2(sx, sz), lat = Math.asin(clamp(ny, -1, 1));
+
+      let mt, T;
+      if (sm) {
+        const u = clamp(Math.floor((nx * 0.5 + 0.5) * sm.n), 0, sm.n - 1);
+        const v = clamp(Math.floor((ny * 0.5 + 0.5) * sm.n), 0, sm.n - 1);
+        const q = sm.mat[v * sm.n + u];
+        mt = q === 255 ? dominantMat(outer.comp) : q;
+        T = sm.T[v * sm.n + u] || Tsurf;
+      } else {
+        T = Tsurf;
+        mt = pickShellMat(outer.comp, fbm(lon * 1.9 + 40, lat * 2.4, seed, 4));
+      }
+
+      /* detail on top */
+      let tex;
+      if (star) {
+        tex = 0.86 + 0.28 * fbm(lon * 7 + W.t * 0.0, lat * 9, seed, 3);
+      } else if (gas) {
+        const warp = fbm(lon * 1.4, lat * 3.2, seed + 13, 3) - 0.5;
+        tex = 0.78 + 0.42 * (0.5 + 0.5 * Math.sin((lat * 9 + warp * 3.4) * 1.7 + seed % 6));
+        tex *= 0.9 + 0.2 * fbm(lon * 5, lat * 5, seed + 91, 2);
+      } else {
+        tex = 0.68 + 0.62 * fbm(lon * 2.6 + 11, lat * 3.1, seed, 4);
+        if (rough) {
+          const c = fbm(lon * 7.5, lat * 8.5, seed + 7, 2);
+          tex *= c > 0.62 ? 0.72 : (c < 0.34 ? 1.16 : 1);
+        }
+      }
+
+      let shade;
+      if (star) {
+        shade = 1 - 0.42 * Math.pow(clamp(rr, 0, 1), 1.6);        // limb darkening
+      } else {
+        const dot = nx * lx + ny * ly + nz * lz;
+        shade = clamp(dot, 0, 1) * 0.94 + 0.08;
+      }
+      const col = matColour(mt, T, tex * shade);
+      d[k] = col[0]; d[k + 1] = col[1]; d[k + 2] = col[2]; d[k + 3] = 255;
+    }
+  }
+  const cv = document.createElement('canvas');
+  cv.width = S; cv.height = S;
+  cv.getContext('2d').putImageData(img, 0, 0);
+  return cv;
+}
+
+function spriteFor(b) {
+  const Rpx = Math.max(K.MIN_PX, Math.round(b.radius * cam.scale));
+  const key = Rpx + ':' + (Math.round(b.angle * 12) % 76) + ':' + (b.surfaceMap ? 1 : 0) +
+              ':' + Math.round(b.surfaceT() / 60);
+  if (b.spriteKey !== key || !b.sprite) {
+    b.sprite = buildSprite(b, Math.min(Rpx, 180));
+    b.spriteKey = key;
+    b.spriteR = Math.min(Rpx, 180);
+  }
+  return b.sprite;
+}
+
+/* ---- the frame --------------------------------------------------------- */
+const STARS = (() => {
+  const a = [];
+  srand(20260909);
+  for (let i = 0; i < 900; i++) a.push({ x: rnd(), y: rnd(), z: 0.15 + rnd() * 0.5, b: 40 + rnd() * 150 });
+  return a;
+})();
+
+function drawStars() {
+  const px = cam.x, py = cam.y;
+  for (let i = 0; i < STARS.length; i++) {
+    const s = STARS[i];
+    let sx = (s.x * BW * 3 - px * s.z * 0.02) % (BW * 3); if (sx < 0) sx += BW * 3;
+    let sy = (s.y * BH * 3 - py * s.z * 0.02) % (BH * 3); if (sy < 0) sy += BH * 3;
+    sx %= BW; sy %= BH;
+    const k = ((sy | 0) * BW + (sx | 0)) * 4;
+    fdata[k] = s.b * 0.8; fdata[k + 1] = s.b * 0.82; fdata[k + 2] = s.b; fdata[k + 3] = 255;
+  }
+}
+
+/* Gas is a density field, not a heap of translucent squares.  Every mote
+ * lays down optical depth and what you see is how much is stacked along
+ * the line of sight.  Opacity is 1 - exp(-kd), which is Beer-Lambert, and
+ * the depth is then banded into a handful of steps: rendered continuously
+ * a cloud comes out as soft round blobs, which is the one thing this is
+ * not allowed to look like.                                               */
+const BANDS = 6;
+let moteAcc = null;
+function drawMotes() {
+  const M = Motes, n = M.count;
+  if (!n) return;
+  dens.fill(0);
+  if (!moteAcc || moteAcc.length !== BW * BH * 3) moteAcc = new Uint8ClampedArray(BW * BH * 3);
+  else moteAcc.fill(0);
+  const acc = moteAcc;                              // saturating, so additive is free
+  let lo = BW, hi = 0, top = BH, bot = 0, any = false;
+
+  for (let i = 0; i < n; i++) {
+    const sx = w2sx(M.x[i]) | 0, sy = w2sy(M.y[i]) | 0;
+    if (sx < 0 || sy < 0 || sx >= BW || sy >= BH) continue;
+    const ghost = M.ghost[i];
+    const col = matColour(M.mat[i], M.T[i], ghost ? 0.5 : 1);
+    const rp = M.r[i] * cam.scale;
+    const p = (sy * BW + sx);
+    const q = p * 3;
+    acc[q] += col[0]; acc[q + 1] += col[1]; acc[q + 2] += col[2];
+    dens[p] += ghost ? 1 : 3;
+    if (rp > 1.1) {           // a soft puff, so a thick cloud reads as thick
+      const half = [[1,0],[-1,0],[0,1],[0,-1]];
+      for (let e = 0; e < 4; e++) {
+        const ax = sx + half[e][0], ay = sy + half[e][1];
+        if (ax < 0 || ay < 0 || ax >= BW || ay >= BH) continue;
+        const pp = ay * BW + ax, qq = pp * 3;
+        acc[qq] += col[0] >> 1; acc[qq + 1] += col[1] >> 1; acc[qq + 2] += col[2] >> 1;
+        dens[pp] += 2;
+      }
+    }
+    any = true;
+    if (sx < lo) lo = sx; if (sx > hi) hi = sx;
+    if (sy < top) top = sy; if (sy > bot) bot = sy;
+  }
+  if (!any) return;
+  lo = Math.max(0, lo - 2); hi = Math.min(BW - 1, hi + 2);
+  top = Math.max(0, top - 2); bot = Math.min(BH - 1, bot + 2);
+
+  for (let y = top; y <= bot; y++) {
+    for (let x = lo; x <= hi; x++) {
+      const p = y * BW + x, dvi = dens[p];
+      if (!dvi) continue;
+      const tau = 1 - Math.exp(-0.34 * dvi);
+      const a = Math.ceil(tau * BANDS) / BANDS;        // banded, so it reads as pixel art
+      const q = p * 3, k = p * 4;
+      fdata[k]     = lerp(fdata[k],     acc[q],     a);
+      fdata[k + 1] = lerp(fdata[k + 1], acc[q + 1], a);
+      fdata[k + 2] = lerp(fdata[k + 2], acc[q + 2], a);
+      fdata[k + 3] = 255;
+    }
+  }
+}
+
+function drawFrame() {
+  /* space */
+  for (let i = 0; i < fdata.length; i += 4) { fdata[i] = 6; fdata[i + 1] = 4; fdata[i + 2] = 13; fdata[i + 3] = 255; }
+  drawStars();
+  drawMotes();
+  bctx.putImageData(frame, 0, 0);
+
+  /* trails: sampled by distance travelled, so they look the same at every
+   * clock setting instead of vanishing when you slow down.                */
+  if (UI.trails) {
+    bctx.lineWidth = 1;
+    for (const b of W.bodies) {
+      if (b.trail.length < 2) continue;
+      bctx.beginPath();
+      for (let i = 0; i < b.trail.length; i++) {
+        const p = b.trail[i];
+        const x = w2sx(p[0]), y = w2sy(p[1]);
+        i ? bctx.lineTo(x, y) : bctx.moveTo(x, y);
+      }
+      bctx.strokeStyle = 'rgba(150,130,220,.30)';
+      bctx.stroke();
+    }
+  }
+
+  if (UI.orbits) drawOrbits();
+
+  /* a world turning to rubble leaves its own sprite behind for about a
+   * third of a second, drifting with what it became.  Nothing pops.       */
+  for (let i = spriteGhosts.length - 1; i >= 0; i--) {
+    const g = spriteGhosts[i];
+    const a = 1 - g.life / 0.33;
+    if (a <= 0) { spriteGhosts.splice(i, 1); continue; }
+    const R = Math.max(K.MIN_PX, g.r * cam.scale);
+    bctx.globalAlpha = a * a;
+    bctx.drawImage(g.img, w2sx(g.x) - R, w2sy(g.y) - R, R * 2, R * 2);
+    bctx.globalAlpha = 1;
+  }
+
+  for (const b of W.bodies) {
+    const R = Math.max(K.MIN_PX, b.radius * cam.scale);
+    const x = w2sx(b.x), y = w2sy(b.y);
+    if (x < -R - 4 || y < -R - 4 || x > BW + R + 4 || y > BH + R + 4) continue;
+    const sp = spriteFor(b);
+    bctx.drawImage(sp, Math.round(x - R), Math.round(y - R), Math.round(R * 2), Math.round(R * 2));
+    if (UI.selected === b) {
+      bctx.strokeStyle = 'rgba(187,141,255,.85)';
+      bctx.strokeRect(Math.round(x - R) - 2.5, Math.round(y - R) - 2.5, Math.round(R * 2) + 5, Math.round(R * 2) + 5);
+    }
+  }
+
+  if (UI.aim) drawPrediction();
+  skyCtx.imageSmoothingEnabled = false;
+  skyCtx.drawImage(buf, 0, 0, sky.width, sky.height);
+}
+
+/* Orbit outlines come out of the state vector, not out of a fit to the
+ * trail.  Draw nothing where there is no orbit: escaping, near-radial, a
+ * periapsis underneath the host's own surface, or a body heavier than the
+ * thing it is supposedly going round all disqualify it, because each is a
+ * case where an ellipse would be a claim about to break.                  */
+function drawOrbits() {
+  for (const b of W.bodies) {
+    const host = hostOf(b);
+    if (!host) continue;
+    const o = orbitOf(b, host);
+    if (!o || !o.bound) continue;
+    if (o.e > 0.985) continue;
+    if (o.peri < host.radius) continue;
+    if (b.mass > host.mass) continue;
+    const a = o.a, e = o.e, bb = a * Math.sqrt(1 - e * e);
+    const cx = host.x - a * e * Math.cos(o.argp), cy = host.y - a * e * Math.sin(o.argp);
+    if (a * cam.scale > BW * 40) continue;
+    bctx.save();
+    bctx.translate(w2sx(cx), w2sy(cy));
+    bctx.rotate(o.argp);
+    bctx.scale(a * cam.scale, bb * cam.scale);
+    bctx.beginPath(); bctx.arc(0, 0, 1, 0, TAU); bctx.restore();
+    bctx.lineWidth = 1;
+    bctx.strokeStyle = UI.selected === b ? 'rgba(187,141,255,.75)' : 'rgba(140,120,190,.28)';
+    bctx.stroke();
+  }
+}
+
+/* While the player aims, a massless probe is integrated through the frozen
+ * field a few hundred steps ahead and drawn.  It is the difference between
+ * a gravity toy and a gravity guessing game.                              */
+function drawPrediction() {
+  const a = UI.aim;
+  let x = a.x, y = a.y, vx = a.vx, vy = a.vy;
+  const src = topSources(8);
+  const dt = 0.35 / Math.max(1, Math.sqrt(cam.scale));
+  bctx.beginPath();
+  bctx.moveTo(w2sx(x), w2sy(y));
+  for (let s = 0; s < 420; s++) {
+    let ax = 0, ay = 0;
+    for (const b of src) {
+      const dx = b.x - x, dy = b.y - y;
+      const r2 = dx * dx + dy * dy + K.SOFT2;
+      const inv = b.mass / (r2 * Math.sqrt(r2));
+      ax += dx * inv; ay += dy * inv;
+    }
+    vx += ax * dt; vy += ay * dt; x += vx * dt; y += vy * dt;
+    if (s % 2 === 0) bctx.lineTo(w2sx(x), w2sy(y));
+  }
+  bctx.setLineDash([3, 3]);
+  bctx.strokeStyle = 'rgba(187,141,255,.7)';
+  bctx.lineWidth = 1;
+  bctx.stroke();
+  bctx.setLineDash([]);
+}
+
+/* ====================================================================== *
+ *  9. THE ROSTER                                                         *
+ * ---------------------------------------------------------------------- *
+ *  Each entry is a layer stack, not a name.  Adding a body is a data edit,
+ *  and the label the picker shows comes from §3.4 reading the stack back,
+ *  never from the entry.  Masses are true Earth masses; stellar masses are
+ *  written in solar masses and multiplied by the Sun this build actually
+ *  has, so retuning the Sun moves the whole shelf with it.
+ *  Radii are derived except for fusing bodies and remnants, whose sizes
+ *  belong to tracks that design step 7 has yet to build.
+ * ====================================================================== */
+const RE_UNITS = K.SI_REARTH / SI.len;                // one Earth radius, world units
+const starR = rSun => 109.2 * rSun * RE_UNITS * K.STAR_EXAG;
+const SM = s => s * K.SUN_MASS;
+
+const ROSTER = [
+  { shelf: 'Small', name: 'Planetesimal', m: 1e-6,   f: { Si: .70, Fe: .20, H2O: .10 }, T: 150 },
+  { shelf: 'Small', name: 'Asteroid',     m: 3e-4,   f: { Fe: .20, Si: .80 },           T: 200 },
+  { shelf: 'Small', name: 'Comet',        m: 1e-4,   f: { H2O: .60, Si: .30, C: .10 },  T: 80  },
+  { shelf: 'Small', name: 'Dwarf planet', m: 2.2e-3, f: { H2O: .35, Si: .60, Fe: .05 }, T: 44  },
+  { shelf: 'Small', name: 'Moon',         m: 1.23e-2,f: { Fe: .08, Si: .92 },           T: 250 },
+
+  { shelf: 'Worlds', name: 'Rocky world',   m: 1,   f: { Fe: .32, Si: .68 },            T: 288 },
+  { shelf: 'Worlds', name: 'Iron world',    m: 1.2, f: { Fe: .68, Si: .32 },            T: 440 },
+  { shelf: 'Worlds', name: 'Ocean world',   m: 3,   f: { Fe: .20, Si: .50, H2O: .30 },  T: 290 },
+  { shelf: 'Worlds', name: 'Super-Earth',   m: 6,   f: { Fe: .30, Si: .70 },            T: 320 },
+  { shelf: 'Worlds', name: 'Carbon world',  m: 2,   f: { Fe: .25, C: .45, Si: .30 },    T: 700 },
+  { shelf: 'Worlds', name: 'Ice world',     m: 0.8, f: { Si: .50, H2O: .50 },           T: 90  },
+  { shelf: 'Worlds', name: 'Stripped core', m: 8,   f: { Fe: .35, Si: .65 },            T: 1900 },
+
+  { shelf: 'Giants', name: 'Gas giant',   m: 318, f: { HHe: .92, Si: .05, Fe: .03 },    T: 130 },
+  { shelf: 'Giants', name: 'Ice giant',   m: 17.1,f: { HHe: .20, H2O: .55, Si: .18, Fe: .07 }, T: 72 },
+  { shelf: 'Giants', name: 'Hot Jupiter', m: 200, f: { HHe: .90, Si: .07, Fe: .03 },    T: 1400, inflated: true },
+  { shelf: 'Giants', name: 'Brown dwarf', m: SM(0.05), f: { HHe: .99, Si: .01 },        T: 1200,
+    R: starR(0.10), stellarClass: 'brown dwarf' },
+
+  { shelf: 'Stars', name: 'Protostar',       m: SM(0.9), f: { HHe: .98, Si: .02 }, T: 3200,
+    R: starR(2.2), fusing: false, stellarClass: 'protostar', core: SM(0.00) },
+  { shelf: 'Stars', name: 'Red dwarf',       m: SM(0.25), f: { HHe: .99, Si: .01 }, T: 3300,
+    R: starR(0.27), fusing: true, stellarClass: 'red dwarf', core: SM(0.00) },
+  { shelf: 'Stars', name: 'Dwarf',           m: SM(0.7), f: { HHe: .99, Si: .01 }, T: 4600,
+    R: starR(0.72), fusing: true, stellarClass: 'dwarf', core: SM(0.01) },
+  { shelf: 'Stars', name: 'Sun-like',        m: SM(1.0), f: { HHe: .99, Si: .01 }, T: 5772,
+    R: starR(1.0), fusing: true, stellarClass: 'sun-like', core: SM(0.02) },
+  { shelf: 'Stars', name: 'Red giant',       m: SM(1.0), f: { HHe: .99, Si: .01 }, T: 3400,
+    R: starR(100), fusing: true, stellarClass: 'red giant', core: SM(0.45) },
+  { shelf: 'Stars', name: 'Blue supergiant', m: SM(20), f: { HHe: .98, Si: .02 }, T: 22000,
+    R: starR(25), fusing: true, stellarClass: 'blue supergiant', core: SM(1.38), fuel: 0.02 },
+
+  { shelf: 'Remnants', name: 'White dwarf',  m: SM(0.6),  f: { C: .99, Fe: .01 }, T: 12000,
+    R: 0.9 * RE_UNITS * K.STAR_EXAG, remnant: 'white dwarf' },
+  { shelf: 'Remnants', name: 'Neutron star', m: SM(1.4),  f: { Fe: 1 }, T: 6e5,
+    R: 12e3 / SI.len * K.STAR_EXAG, remnant: 'neutron star' },
+  { shelf: 'Remnants', name: 'Pulsar',       m: SM(1.4),  f: { Fe: 1 }, T: 6e5,
+    R: 12e3 / SI.len * K.STAR_EXAG, remnant: 'pulsar', spin: 40 },
+  { shelf: 'Remnants', name: 'Magnetar',     m: SM(1.6),  f: { Fe: 1 }, T: 1e6,
+    R: 12e3 / SI.len * K.STAR_EXAG, remnant: 'magnetar', spin: 120 },
+  { shelf: 'Remnants', name: 'Black hole',   m: SM(8),    f: { Fe: 1 }, T: 0,
+    R: 2 * K.SI_G * 8 * K.SI_MSUN / (299792458 ** 2) / SI.len * K.STAR_EXAG, remnant: 'black hole' },
+  { shelf: 'Remnants', name: 'Supermassive', m: SM(4.3e6), f: { Fe: 1 }, T: 0,
+    R: 2 * K.SI_G * 4.3e6 * K.SI_MSUN / (299792458 ** 2) / SI.len * K.STAR_EXAG, remnant: 'supermassive black hole' },
+];
+const SHELVES = ['Small', 'Worlds', 'Giants', 'Stars', 'Remnants'];
+
+function bodyFromRoster(entry, x, y, vx, vy) {
+  const shells = makeStack(entry.m, entry.f, { surface: entry.T, mix: entry.T });
+  const b = new Body({
+    x, y, vx, vy, shells,
+    rOverride: entry.R || 0,
+    inflated: !!entry.inflated,
+    fusing: !!entry.fusing,
+    stellarClass: entry.stellarClass || null,
+    remnant: entry.remnant || null,
+    coreMass: entry.core || 0,
+    coreFuel: entry.fuel === undefined ? 1 : entry.fuel,
+    spin: entry.spin || 0,
+    name: entry.name,
+  });
+  if (entry.fusing || entry.remnant) b.lum = Math.pow(solarMasses(b.mass), 3.5);
+  return b;
+}
+
+/* ====================================================================== *
+ *  10. THE INTERFACE                                                     *
+ * ---------------------------------------------------------------------- *
+ *  The sky is the interface.  Nothing permanently covers the middle, the
+ *  bar is docked rather than floating so its edge cannot be overshot, and
+ *  the readouts say what is true rather than what is set.
+ * ====================================================================== */
+const $ = s => document.querySelector(s);
+const UI = {
+  picked: null,          // roster entry, or null.  The picker CAN hold nothing.
+  selected: null,
+  follow: null,
+  drag: false, trails: true, orbits: true, autoOrbit: true,
+  aim: null, grabbed: null, panning: null,
+  rateSlider: 420,
+  select(b) {
+    this.selected = b;
+    if (!b) { $('#insp').classList.remove('open'); $('#leader').classList.remove('open'); }
+    else { $('#insp').classList.add('open'); $('#leader').classList.add('open'); }
+  },
+};
+
+/* ---- the clock -------------------------------------------------------- *
+ *  A multiplier is a number about the simulation; what a year costs is the
+ *  thing worth knowing.  Both are shown, with the derived one large, and
+ *  the unit steps down as the clock slows because 0.003 yr/s is a true
+ *  statement nobody can read.                                             *
+ * ---------------------------------------------------------------------- */
+function rateMultiplier(v) {
+  const s = v / 1000;
+  if (s <= 0.75) return 1000 * Math.pow(s / 0.75, 3);
+  return 1000 * Math.pow(10, (s - 0.75) / 0.25);
+}
+function baseRate() { return YEAR_UNITS / 10000; }     // top of the track: about a year a second
+
+function rateLabel(unitsPerSec) {
+  const yr = unitsPerSec / YEAR_UNITS;
+  const steps = [[1, 'yr'], [12, 'mo'], [365.25, 'd'], [8766, 'h'], [525960, 'min']];
+  for (const [k, u] of steps) {
+    const v = yr * k;
+    if (v >= 0.8 || u === 'min') {
+      return (v >= 100 ? v.toFixed(0) : v >= 10 ? v.toFixed(1) : v.toFixed(2)) + ' ' + u + '/s';
+    }
+  }
+  return '0';
+}
+function applyRate() {
+  const mul = rateMultiplier(UI.rateSlider);
+  W.rate = baseRate() * mul;
+  $('#rateBig').textContent = rateLabel(W.rate);
+  $('#rateMul').textContent = (mul >= 100 ? mul.toFixed(0) : mul >= 10 ? mul.toFixed(1) : mul.toFixed(2)) + '×';
+}
+
+/* ---- the picker ------------------------------------------------------- *
+ *  It must be possible for no body to be lit.  If the picker always has a
+ *  selection, every press on empty sky puts a world there whether you
+ *  wanted one or not, and with a tool in hand that is precisely the press
+ *  you were trying to make.                                               *
+ * ---------------------------------------------------------------------- */
+function chipSprite(entry, size) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = size;
+  const c = cv.getContext('2d');
+  const tmp = bodyFromRoster(entry, 0, 0, 0, 0);
+  const R = Math.floor(size / 2) - 1;
+  const sp = buildSprite(tmp, R);
+  c.imageSmoothingEnabled = false;
+  c.drawImage(sp, Math.floor(size / 2) - R, Math.floor(size / 2) - R);
+  return cv;
+}
+
+function buildPicker() {
+  const row = $('#picker'), jumps = $('#shelfJumps');
+  row.innerHTML = ''; jumps.innerHTML = '';
+  for (const shelf of SHELVES) {
+    const jb = document.createElement('button');
+    jb.textContent = shelf;
+    jb.onclick = () => { const g = row.querySelector('[data-shelf="' + shelf + '"]');
+                         if (g) row.scrollTo({ left: g.offsetLeft - row.offsetLeft - 8, behavior: 'smooth' }); };
+    jumps.appendChild(jb);
+
+    const g = document.createElement('div');
+    g.className = 'group'; g.dataset.shelf = shelf;
+    const gn = document.createElement('div');
+    gn.className = 'gname'; gn.textContent = shelf;
+    gn.onclick = jb.onclick;
+    g.appendChild(gn);
+    for (const e of ROSTER) {
+      if (e.shelf !== shelf) continue;
+      const chip = document.createElement('div');
+      chip.className = 'chip'; chip.dataset.name = e.name;
+      chip.appendChild(chipSprite(e, 26));
+      const sp = document.createElement('span'); sp.textContent = e.name;
+      chip.appendChild(sp);
+      chip.onclick = () => pick(UI.picked === e ? null : e);   // tapping the lit one puts it out
+      g.appendChild(chip);
+    }
+    row.appendChild(g);
+  }
+}
+function pick(entry) {
+  UI.picked = entry;
+  for (const c of document.querySelectorAll('.chip'))
+    c.classList.toggle('on', !!entry && c.dataset.name === entry.name);
+  const pc = $('#placeChip');
+  pc.querySelector('span').textContent = entry ? entry.name : 'nothing';
+  const cv = pc.querySelector('canvas'), cx = cv.getContext('2d');
+  cx.clearRect(0, 0, 16, 16);
+  if (entry) { cx.imageSmoothingEnabled = false; cx.drawImage(chipSprite(entry, 16), 0, 0); }
+}
+
+/* ---- the inspector rides the body -------------------------------------- */
+const MAT_CSS = ['#79767f', '#7d6a55', '#33303 8', '#c6dce8', '#d6cca8'];
+MAT_CSS[2] = '#4a4652';
+function fmtMass(m) {
+  const e = m;                                        // sim mass IS real Earth masses
+  if (e >= 300) return (SI.mass(m) / K.SI_MJUP).toFixed(2) + ' Mⱼ';
+  if (e >= 0.02) return e.toFixed(e >= 10 ? 1 : 3) + ' M⊕';
+  return e.toExponential(2) + ' M⊕';
+}
+function updateInspector() {
+  const b = UI.selected;
+  if (!b) return;
+  if (W.bodies.indexOf(b) < 0) { UI.select(null); return; }
+  const host = hostOf(b), o = host ? orbitOf(b, host) : null;
+  b._ecc = o && o.bound ? o.e : 0;
+
+  $('#inspName b').textContent = className(b, o ? { e: o.e } : null) +
+    (stateWord(b) ? '  · ' + stateWord(b) : '');
+  const rows = [];
+  rows.push(['mass', fmtMass(b.mass)]);
+  rows.push(['radius', (b.radius / RE_UNITS / K.SIZE_EXAG).toPrecision(3) + ' R⊕']);
+  rows.push(['speed', Math.hypot(b.vx, b.vy).toFixed(2) + ' u/t']);
+  rows.push(['surface', Math.round(b.surfaceT()) + ' K']);
+  if (b.rockT() > 400) rows.push(['rock', Math.round(b.rockT()) + ' K']);
+  if (host && o && o.bound) {
+    rows.push(['orbits', host.name || className(host)]);
+    rows.push(['period', rateLabel(o.T).replace('/s', '')]);
+    rows.push(['a / e', o.a.toFixed(1) + ' / ' + o.e.toFixed(3)]);
+    rows.push(['one lap', (o.T / Math.max(W.rate, 1e-9)).toFixed(1) + ' s real']);
+  } else if (host) {
+    rows.push(['orbits', 'escaping ' + (host.name || className(host))]);
+  }
+  $('#inspRows').innerHTML = rows.map(r =>
+    '<div class="kv"><i>' + r[0] + '</i><b>' + r[1] + '</b></div>').join('');
+
+  /* the composition bar is the whole material system made visible, and
+   * watching it change after a collision is the point.                    */
+  const bar = $('#compBar'); bar.innerHTML = '';
+  const key = $('#compKey'); key.innerHTML = '';
+  for (let mt = 0; mt < NMAT; mt++) {
+    const f = b.frac(mt);
+    if (f <= 0.0005) continue;
+    const d = document.createElement('div');
+    d.style.width = (f * 100) + '%'; d.style.background = MAT_CSS[mt];
+    d.title = MATS[mt].full + ' ' + (f * 100).toFixed(1) + '%';
+    bar.appendChild(d);
+    const s = document.createElement('span');
+    s.innerHTML = '<i style="background:' + MAT_CSS[mt] + '"></i>' + MATS[mt].name +
+                  ' ' + (f * 100).toFixed(f > 0.1 ? 0 : 1) + '%';
+    key.appendChild(s);
+  }
+  /* it sits near the body it describes, with a leader line, and it moves */
+  const sx = w2sx(b.x) * PIXEL / devicePixelRatio, sy = w2sy(b.y) * PIXEL / devicePixelRatio;
+  const R = Math.max(K.MIN_PX, b.radius * cam.scale) * PIXEL / devicePixelRatio;
+  const el = $('#insp');
+  const bw = el.offsetWidth || 200, bh = el.offsetHeight || 140;
+  let px = sx + R + 16, py = sy - bh / 2;
+  if (px + bw > innerWidth - 8) px = sx - R - 16 - bw;
+  px = clamp(px, 8, innerWidth - bw - 8);
+  py = clamp(py, 8, innerHeight - bh - 96);
+  el.style.left = px + 'px'; el.style.top = py + 'px';
+  const line = $('#leader').firstElementChild;
+  $('#leader').setAttribute('viewBox', '0 0 ' + innerWidth + ' ' + innerHeight);
+  $('#leader').style.width = innerWidth + 'px'; $('#leader').style.height = innerHeight + 'px';
+  line.setAttribute('x1', sx); line.setAttribute('y1', sy);
+  line.setAttribute('x2', px < sx ? px + bw : px); line.setAttribute('y2', py + bh / 2);
+}
+
+/* ---- pointers: touch and mouse are the same code path ------------------ */
+const FLING = 0.06;      // §15.5: the clock does not run at hand speed, so a
+                         // cursor's true world velocity is nonsense as an orbital one
+const pointers = new Map();
+let spaceHeld = false, pinch = null;
+
+function bodyAt(bx, by) {
+  const wx = s2wx(bx), wy = s2wy(by);
+  let best = null, bd = Infinity;
+  for (const b of W.bodies) {
+    const R = Math.max(b.radius, (K.MIN_PX + 3) / cam.scale);
+    const d = (b.x - wx) ** 2 + (b.y - wy) ** 2;
+    if (d < R * R && d < bd) { bd = d; best = b; }
+  }
+  return best;
+}
+
+sky.addEventListener('pointerdown', ev => {
+  sky.setPointerCapture(ev.pointerId);
+  const bx = c2bx(ev.clientX), by = c2by(ev.clientY);
+  pointers.set(ev.pointerId, { bx, by, x0: bx, y0: by, t0: performance.now() });
+
+  if (pointers.size === 2) {
+    const [p, q] = [...pointers.values()];
+    pinch = { d: Math.hypot(p.bx - q.bx, p.by - q.by), scale: cam.scale,
+              cx: (p.bx + q.bx) / 2, cy: (p.by + q.by) / 2,
+              wx: s2wx((p.bx + q.bx) / 2), wy: s2wy((p.by + q.by) / 2) };
+    UI.aim = null; UI.grabbed = null;
+    return;
+  }
+  if (ev.button === 1 || spaceHeld) { UI.panning = { bx, by, cx: cam.x, cy: cam.y }; return; }
+
+  const hit = bodyAt(bx, by);
+  if (UI.drag && hit) {
+    /* a tool press is not a selection: picking a world up leaves the
+     * inspector exactly as it was.                                        */
+    hit.held = true;
+    UI.grabbed = { b: hit, lx: bx, ly: by, vx: 0, vy: 0, lt: performance.now() };
+    UI.follow = null;
+    return;
+  }
+  if (hit) { UI.select(UI.selected === hit ? null : hit); return; }
+  if (UI.picked) { UI.aim = { x: s2wx(bx), y: s2wy(by), vx: 0, vy: 0, bx, by, moved: false }; return; }
+  UI.select(null);
+});
+
+sky.addEventListener('pointermove', ev => {
+  const p = pointers.get(ev.pointerId);
+  const bx = c2bx(ev.clientX), by = c2by(ev.clientY);
+  if (p) { p.bx = bx; p.by = by; }
+
+  if (pinch && pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.bx - b.bx, a.by - b.by);
+    if (pinch.d > 4) setScale(pinch.scale * (d / pinch.d), (a.bx + b.bx) / 2, (a.by + b.by) / 2, pinch.wx, pinch.wy);
+    return;
+  }
+  if (UI.panning) {
+    cam.x = UI.panning.cx - (bx - UI.panning.bx) / cam.scale;
+    cam.y = UI.panning.cy - (by - UI.panning.by) / cam.scale;
+    UI.follow = null;
+    return;
+  }
+  if (UI.grabbed) {
+    const g = UI.grabbed, now = performance.now(), dt = Math.max(1, now - g.lt) / 1000;
+    const nx = s2wx(bx), ny = s2wy(by);
+    g.vx = (nx - g.b.x) / dt; g.vy = (ny - g.b.y) / dt;
+    g.b.x = nx; g.b.y = ny; g.lt = now;
+    return;
+  }
+  if (UI.aim) {
+    const a = UI.aim;
+    a.vx = (s2wx(a.bx) - s2wx(bx)) * FLING;
+    a.vy = (s2wy(a.by) - s2wy(by)) * FLING;
+    if (Math.hypot(bx - a.bx, by - a.by) > 3) a.moved = true;
+  }
+});
+
+function endPointer(ev) {
+  const bx = c2bx(ev.clientX), by = c2by(ev.clientY);
+  pointers.delete(ev.pointerId);
+  if (pointers.size < 2) pinch = null;
+  UI.panning = null;
+
+  if (UI.grabbed) {
+    const g = UI.grabbed;
+    g.b.held = false;
+    /* what it carries away is put on the same scale a fling is */
+    const s = clamp(FLING * 6, 0, 1);
+    g.b.vx = g.vx * s; g.b.vy = g.vy * s;
+    UI.grabbed = null;
+    return;
+  }
+  if (UI.aim) {
+    const a = UI.aim;
+    if (UI.picked) {
+      if (!a.moved && UI.autoOrbit) placeInOrbit(a.x, a.y);
+      else place(a.x, a.y, a.vx, a.vy);
+    }
+    UI.aim = null;
+  }
+}
+sky.addEventListener('pointerup', endPointer);
+sky.addEventListener('pointercancel', endPointer);
+
+function setScale(s, bx, by, wxIn, wyIn) {
+  const wx = wxIn !== undefined ? wxIn : s2wx(bx), wy = wyIn !== undefined ? wyIn : s2wy(by);
+  cam.scale = clamp(s, 1e-7, 4000);
+  cam.x = wx - (bx - BW / 2) / cam.scale;
+  cam.y = wy - (by - BH / 2) / cam.scale;
+  UI.follow = null;
+}
+sky.addEventListener('wheel', ev => {
+  ev.preventDefault();
+  const bx = c2bx(ev.clientX), by = c2by(ev.clientY);
+  setScale(cam.scale * Math.pow(1.0016, -ev.deltaY), bx, by);
+}, { passive: false });
+
+function place(x, y, vx, vy) {
+  if (!UI.picked) return;
+  const b = bodyFromRoster(UI.picked, x, y, vx, vy);
+  W.bodies.push(b);
+  return b;
+}
+/* with Auto-orbit on, a tap drops the body straight into a circular orbit
+ * about whatever dominates there, at the speed the SOFTENED force law
+ * balances.                                                               */
+function placeInOrbit(x, y) {
+  let host = null, score = 0;
+  for (const o of W.bodies) {
+    const r2 = (o.x - x) ** 2 + (o.y - y) ** 2 + K.SOFT2;
+    const s = o.mass / r2;
+    if (s > score) { score = s; host = o; }
+  }
+  if (!host) return place(x, y, 0, 0);
+  const dx = x - host.x, dy = y - host.y, r = Math.hypot(dx, dy) || 1e-6;
+  const v = circularSpeed(host.mass, r);
+  return place(x, y, host.vx - dy / r * v, host.vy + dx / r * v);
+}
+
+/* ---- deck wiring ------------------------------------------------------- */
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast._h); toast._h = setTimeout(() => t.classList.remove('on'), 1900);
+}
+function toggle(id, key) {
+  const el = $(id);
+  el.onclick = () => { UI[key] = !UI[key]; el.classList.toggle('on', UI[key]); };
+  el.classList.toggle('on', UI[key]);
+}
+function wireDeck() {
+  $('#playBtn').onclick = () => setPaused(!W.paused);
+  $('#rate').oninput = e => { UI.rateSlider = +e.target.value; applyRate(); };
+  toggle('#dragBtn', 'drag'); toggle('#orbitBtn', 'orbits');
+  toggle('#trailBtn', 'trails'); toggle('#autoBtn', 'autoOrbit');
+  $('#fitBtn').onclick = fitAll;
+  $('#inspClose').onclick = () => UI.select(null);
+  $('#delBtn').onclick = () => { if (UI.selected) { retireBody(UI.selected); UI.select(null); } };
+  $('#followBtn').onclick = () => { UI.follow = UI.follow === UI.selected ? null : UI.selected; };
+
+  const popFor = (btn, pop) => {
+    $(btn).onclick = e => {
+      const open = $(pop).classList.contains('open');
+      for (const p of document.querySelectorAll('.pop')) p.classList.remove('open');
+      if (open) return;
+      const r = e.currentTarget.getBoundingClientRect();
+      $(pop).classList.add('open');
+      const pw = $(pop).offsetWidth;
+      $(pop).style.left = clamp(r.left, 8, innerWidth - pw - 8) + 'px';
+      $(pop).style.bottom = (innerHeight - r.top + 6) + 'px';
+      if (pop === '#forgePop') { pick(UI.picked || ROSTER[5]); forgeSync(); }
+    };
+  };
+  popFor('#sysBtn', '#sysPop'); popFor('#forgeBtn', '#forgePop');
+  addEventListener('pointerdown', e => {
+    if (e.target.closest('.pop') || e.target.closest('#deck')) return;
+    for (const p of document.querySelectorAll('.pop')) p.classList.remove('open');
+  }, true);
+
+  /* destroying the sky is not a click: the button fills as you hold it */
+  const cb = $('#clearBtn'), fill = $('#clearFill');
+  let holdT = 0, raf = 0;
+  const step = () => {
+    holdT += 16 / 800;
+    fill.style.transform = 'scaleX(' + Math.min(1, holdT) + ')';
+    if (holdT >= 1) { clearAll(); stop(); return; }
+    raf = requestAnimationFrame(step);
+  };
+  const stop = () => { cancelAnimationFrame(raf); holdT = 0; fill.style.transform = 'scaleX(0)'; };
+  cb.addEventListener('pointerdown', () => { holdT = 0; raf = requestAnimationFrame(step); });
+  for (const e of ['pointerup', 'pointerleave', 'pointercancel']) cb.addEventListener(e, stop);
+
+  const sl = $('#sysList');
+  sl.innerHTML = '';
+  for (const p of PRESETS) {
+    const b = document.createElement('button');
+    b.textContent = p.name; b.style.display = 'block'; b.style.width = '100%';
+    b.style.textAlign = 'left'; b.style.margin = '2px 0';
+    b.onclick = () => { loadPreset(p.name); $('#sysPop').classList.remove('open'); };
+    sl.appendChild(b);
+  }
+  buildForge();
+}
+function setPaused(p) {
+  W.paused = p;
+  $('#playBtn').innerHTML = p ? '&#9654;' : '&#10074;&#10074;';
+  $('#live').classList.toggle('on', !p);
+}
+function clearAll() {
+  W.bodies.length = 0; Motes.clear(); W.clumps.length = 0;
+  spriteGhosts.length = 0; escapedMass.fill(0);
+  UI.select(null); UI.follow = null; W.t = 0;
+}
+function fitAll() {
+  if (!W.bodies.length && !Motes.count) return;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const b of W.bodies) {
+    x0 = Math.min(x0, b.x - b.radius); x1 = Math.max(x1, b.x + b.radius);
+    y0 = Math.min(y0, b.y - b.radius); y1 = Math.max(y1, b.y + b.radius);
+  }
+  for (let i = 0; i < Motes.count; i++) {
+    x0 = Math.min(x0, Motes.x[i]); x1 = Math.max(x1, Motes.x[i]);
+    y0 = Math.min(y0, Motes.y[i]); y1 = Math.max(y1, Motes.y[i]);
+  }
+  if (!isFinite(x0)) return;
+  cam.x = (x0 + x1) / 2; cam.y = (y0 + y1) / 2;
+  cam.scale = clamp(Math.min(BW / Math.max(x1 - x0, 1e-6), BH / Math.max(y1 - y0, 1e-6)) * 0.78, 1e-7, 4000);
+  UI.follow = null;
+}
+
+/* ---- the Forge --------------------------------------------------------- *
+ *  Not a palette picker.  It sets the layer stack directly, and the preview
+ *  name updates from §3.4 as you move it, which is the clearest possible
+ *  demonstration that the naming is derived rather than stored.  Both mass
+ *  and the composition mix are logarithmic where a log axis is what the
+ *  range needs: one sweep covers a pebble and a supermassive black hole.
+ * ---------------------------------------------------------------------- */
+const forge = { logM: 0, f: [0.32, 0.68, 0, 0, 0], T: 288 };
+function buildForge() {
+  const host = $('#forgeBody');
+  const rows = [
+    ['mass', 'logM', -9, 9, 0.01],
+    ['temp', 'T', 20, 30000, 10],
+  ];
+  let html = '';
+  for (const [lbl, k, lo, hi, st] of rows)
+    html += '<div class="field"><label>' + lbl + '</label><input type="range" data-k="' + k +
+            '" min="' + lo + '" max="' + hi + '" step="' + st + '"><output data-o="' + k + '"></output></div>';
+  for (let mt = 0; mt < NMAT; mt++)
+    html += '<div class="field"><label>' + MATS[mt].name + '</label><input type="range" data-f="' + mt +
+            '" min="0" max="1" step="0.01"><output data-of="' + mt + '"></output></div>';
+  html += '<div class="field"><label>is</label><output data-o="cls" style="width:auto;flex:1;text-align:left;color:var(--accent)"></output></div>';
+  html += '<div class="field"><label>radius</label><output data-o="rad" style="width:auto;flex:1;text-align:left"></output></div>';
+  html += '<button id="forgePlace" style="width:100%;margin-top:5px">Load into the picker</button>';
+  host.innerHTML = html;
+  host.oninput = e => {
+    const t = e.target;
+    if (t.dataset.k) forge[t.dataset.k] = +t.value;
+    if (t.dataset.f !== undefined) forge.f[+t.dataset.f] = +t.value;
+    forgeSync();
+  };
+  $('#forgePlace').onclick = () => { pick(forgeEntry()); toast('Forged body is in the picker'); };
+}
+function forgeEntry() {
+  const f = {}; let tot = 0;
+  for (let mt = 0; mt < NMAT; mt++) { f[MAT_NAMES[mt]] = forge.f[mt]; tot += forge.f[mt]; }
+  if (tot <= 0) f.Si = 1;
+  return { shelf: 'Forge', name: 'Forged', m: Math.pow(10, forge.logM), f, T: forge.T };
+}
+function forgeSync() {
+  const host = $('#forgeBody');
+  for (const el of host.querySelectorAll('[data-k]')) el.value = forge[el.dataset.k];
+  for (const el of host.querySelectorAll('[data-f]')) el.value = forge.f[+el.dataset.f];
+  const e = forgeEntry();
+  const b = bodyFromRoster(e, 0, 0, 0, 0);
+  host.querySelector('[data-o="logM"]').textContent = fmtMass(b.mass);
+  host.querySelector('[data-o="T"]').textContent = forge.T + ' K';
+  for (let mt = 0; mt < NMAT; mt++)
+    host.querySelector('[data-of="' + mt + '"]').textContent = (b.frac(mt) * 100).toFixed(0) + '%';
+  host.querySelector('[data-o="cls"]').textContent = className(b) + (stateWord(b) ? ' · ' + stateWord(b) : '');
+  host.querySelector('[data-o="rad"]').textContent =
+    (b.radius / RE_UNITS / K.SIZE_EXAG).toPrecision(3) + ' R⊕';
+}
+
+/* ---- keyboard ---------------------------------------------------------- */
+addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = e.key.toLowerCase();
+  if (e.code === 'Space') { spaceHeld = true; setPaused(!W.paused); e.preventDefault(); return; }
+  if (k === 'escape') { UI.select(null); UI.aim = null; return; }
+  if (k >= '1' && k <= '9') {
+    const shelf = SHELVES.find(s => ROSTER.some(r => r.shelf === s && r.name === (UI.picked || {}).name)) || 'Worlds';
+    const list = ROSTER.filter(r => r.shelf === shelf);
+    const e2 = list[+k - 1];
+    if (e2) pick(UI.picked === e2 ? null : e2);
+    return;
+  }
+  const map = { c: () => clearAll(), t: '#trailBtn', d: '#dragBtn', f: () => fitAll(),
+                g: '#forgeBtn', o: '#orbitBtn' };
+  const a = map[k];
+  if (typeof a === 'function') a(); else if (a) $(a).click();
+});
+addEventListener('keyup', e => { if (e.code === 'Space') spaceHeld = false; });
+
+/* ====================================================================== *
+ *  11. PRESETS                                                           *
+ * ====================================================================== */
+function addRoster(name, x, y, vx, vy, over) {
+  const e = ROSTER.find(r => r.name === name);
+  if (!e) throw new Error('no roster entry ' + name);
+  const b = bodyFromRoster(Object.assign({}, e, over || {}), x, y, vx, vy);
+  W.bodies.push(b);
+  return b;
+}
+function addWorld(o) {
+  const b = new Body({
+    x: o.x, y: o.y, vx: o.vx || 0, vy: o.vy || 0,
+    shells: makeStack(o.m, o.f, { surface: o.T, mix: o.T }),
+    rOverride: o.R || 0, fusing: !!o.fusing, stellarClass: o.stellarClass || null,
+    coreMass: o.core || 0, name: o.name, spin: o.spin || 0,
+  });
+  if (o.fusing) b.lum = Math.pow(solarMasses(b.mass), 3.5);
+  W.bodies.push(b);
+  return b;
+}
+
+/* started at its own perihelion with the perihelion speed, so
+ * eccentricities are real and Mercury's 0.21 is plainly visible          */
+function atPerihelion(host, a, e, m, f, T, name, phase) {
+  const rp = a * (1 - e);
+  const mu = K.G * (host.mass + m);
+  const vp = Math.sqrt(mu * (1 + e) / rp);
+  const th = phase || 0;
+  return addWorld({ x: host.x + Math.cos(th) * rp, y: host.y + Math.sin(th) * rp,
+                    vx: host.vx - Math.sin(th) * vp, vy: host.vy + Math.cos(th) * vp,
+                    m, f, T, name });
+}
+
+const PRESETS = [
+  { name: 'Empty sky', build() { srand(1); } },
+
+  { name: 'Solar system', build() {
+      srand(7);
+      const sun = addWorld({ x: 0, y: 0, m: K.SUN_MASS, f: { HHe: .99, Si: .01 }, T: 5772,
+                             R: starR(1), fusing: true, stellarClass: 'sun-like',
+                             core: 0.02 * K.SUN_MASS, name: 'Sun' });
+      const P = [
+        ['Mercury', 0.3871, 0.2056, 0.0553, { Fe: .70, Si: .30 }, 440],
+        ['Venus',   0.7233, 0.0068, 0.815,  { Fe: .31, Si: .69 }, 737],
+        ['Earth',   1.0000, 0.0167, 1.000,  { Fe: .32, Si: .675, H2O: .005 }, 288],
+        ['Mars',    1.5237, 0.0934, 0.107,  { Fe: .24, Si: .76 }, 210],
+        ['Jupiter', 5.2034, 0.0484, 317.8,  { HHe: .92, Si: .05, Fe: .03 }, 165],
+        ['Saturn',  9.5371, 0.0542, 95.16,  { HHe: .88, Si: .08, Fe: .04 }, 134],
+        ['Uranus', 19.1913, 0.0472, 14.54,  { HHe: .12, H2O: .70, Si: .12, Fe: .06 }, 76],
+        ['Neptune',30.0690, 0.0086, 17.15,  { HHe: .12, H2O: .70, Si: .12, Fe: .06 }, 72],
+      ];
+      let i = 0;
+      for (const [n, a, e, m, f, T] of P)
+        atPerihelion(sun, a * K.AU, e, m, f, T, n, (i++) * 0.83);
+      /* The main belt is motes, not bodies.  Motes feel the top six masses,
+       * which here are the Sun and the four giants, and that is exactly the
+       * set that carves the Kirkwood gaps.                                 */
+      const jup = W.bodies.find(b => b.name === 'Jupiter');
+      for (let k = 0; k < 2600; k++) {
+        const a = rndRange(2.06, 3.32) * K.AU, e = Math.abs(gauss()) * 0.07;
+        const th = TAU * rnd(), rp = a * (1 - e);
+        const v = Math.sqrt(K.G * sun.mass * (1 + e) / rp);
+        Motes.spawn(Math.cos(th) * rp, Math.sin(th) * rp,
+                    -Math.sin(th) * v, Math.cos(th) * v,
+                    3e-10, rnd() < 0.25 ? MAT.Fe : MAT.Si, 190, 0.05);
+      }
+      YEAR_UNITS = 2 * Math.PI * Math.sqrt(Math.pow(K.AU, 3) / (K.G * sun.mass));
+      cam.x = 0; cam.y = 0; cam.scale = 0.55;
+    } },
+
+  /* §14: the one that shows the material system off.  Nothing here arranges
+   * the outcome; the acceptance test is that the moon comes out iron-poor. */
+  { name: 'Giant impact', build() {
+      srand(1969);
+      const target = addWorld({ x: 0, y: 0, m: 0.90, f: { Fe: .32, Si: .68 }, T: 1500, name: 'proto-Earth' });
+      const imp = addWorld({ x: 0, y: 0, m: 0.13, f: { Fe: .26, Si: .74 }, T: 1400, name: 'impactor' });
+      const rs = target.radius + imp.radius;
+      const Mtot = target.mass + imp.mass;
+      const d = 6 * rs;
+      const vEsc = Math.sqrt(2 * K.G * Mtot / rs);
+      const v0 = Math.sqrt(2 * K.G * Mtot / d);          // arrives at contact at v_esc
+      const bWant = 0.70;
+      const off = bWant * rs * vEsc / v0;                // angular momentum, conserved
+      const f1 = imp.mass / Mtot, f2 = target.mass / Mtot;
+      target.x = -d * f1; target.y = -off * f1; target.vx = v0 * f1; target.vy = 0;
+      imp.x = d * f2; imp.y = off * f2; imp.vx = -v0 * f2; imp.vy = 0;
+      cam.x = 0; cam.y = 0; cam.scale = BW / (d * 1.6);
+      UI.rateSlider = 300; applyRate();
+    } },
+
+  { name: 'Head-on merge', build() {
+      srand(3);
+      const a = addWorld({ x: -2, y: 0, m: 1, f: { Fe: .32, Si: .68 }, T: 900, name: 'A' });
+      const b = addWorld({ x: 2, y: 0, m: 1, f: { Fe: .32, Si: .68 }, T: 900, name: 'B' });
+      /* released from rest, so they arrive at exactly their mutual escape
+       * velocity and the pair is marginally bound.  Handing them approach
+       * speed as well leaves the merged cloud unbound and it disperses.  */
+      cam.x = 0; cam.y = 0; cam.scale = BW / 10;
+      UI.rateSlider = 300; applyRate();
+    } },
+
+  { name: 'Grazing pass', build() {
+      srand(11);
+      const a = addWorld({ x: -30, y: -6, m: 1.4, f: { Fe: .30, Si: .70 }, T: 700, name: 'A' });
+      const b = addWorld({ x: 30, y: 6, m: 1.1, f: { Fe: .28, Si: .62, H2O: .10 }, T: 500, name: 'B' });
+      const v = 0.30 * Math.sqrt(2 * K.G * (a.mass + b.mass) / (a.radius + b.radius));
+      a.vx = v * 0.5; b.vx = -v * 0.5;
+      cam.x = 0; cam.y = 0; cam.scale = BW / 90;
+      UI.rateSlider = 320; applyRate();
+    } },
+
+  { name: 'Melt and settle', build() {
+      srand(29);
+      const a = addWorld({ x: 0, y: 0, m: 2.2, f: { Fe: .35, Si: .55, H2O: .10 }, T: 2400, name: 'melt' });
+      shatterBody(a); retireBody(a);
+      cam.x = 0; cam.y = 0; cam.scale = BW / 24;
+      UI.rateSlider = 260; applyRate();
+    } },
+];
+
+function loadPreset(name) {
+  const p = PRESETS.find(q => q.name === name);
+  if (!p) return false;
+  clearAll();
+  YEAR_UNITS = 2 * Math.PI * Math.sqrt(Math.pow(K.AU, 3) / (K.G * K.SUN_MASS));
+  p.build();
+  bodyAccelerations(W.bodies);
+  rebuildClumps();
+  applyRate();
+  W.preset = name;
+  return true;
+}
+
+/* ====================================================================== *
+ *  12. THE LOOP AND THE SCRIPTING HOOK                                   *
+ * ====================================================================== */
+let clumpTimer = 0;
+
+/* one full physics advance of exactly dt sim units.  Tests drive this
+ * directly so results do not depend on machine speed.                     */
+function advance(dt) {
+  if (dt <= 0) return;
+  /* §12: cap the BUDGET, not the count.  Cap the count and the substep
+   * grows instead, and a circular orbit starts spiralling.  Only bodies
+   * are integrated per substep, so the cost is n^2 over a few dozen
+   * things rather than over the whole sky.                                */
+  const n = Math.max(1, W.bodies.length);
+  const nSub = clamp(Math.floor(W.substepBudget / (n * n)) || 1, 1, 400);
+  const h = dt / nSub;
+  for (let s = 0; s < nSub; s++) {
+    stepBodies(h);
+    for (let guard = 0; guard < 4; guard++) {
+      const before = W.bodies.length;
+      resolveCollisions();
+      if (W.bodies.length === before) break;
+    }
+  }
+
+  if (Motes.count) {
+    /* motes step once a frame however many body substeps ran, but never so
+     * far in one go that a fast mote steps through another one            */
+    let vmax = 0, rmin = Infinity;
+    for (let i = 0; i < Motes.count; i++) {
+      const v = Math.abs(Motes.vx[i]) + Math.abs(Motes.vy[i]);
+      if (v > vmax) vmax = v;
+      if (Motes.r[i] < rmin) rmin = Motes.r[i];
+    }
+    const need = rmin > 0 && isFinite(rmin) ? Math.ceil(vmax * dt / rmin) : 1;
+    const ms = clamp(need, 1, 16), mh = dt / ms;
+    for (let s = 0; s < ms; s++) {
+      measureClumps();
+      const E0 = cloudMechanical();
+      stepMotes(mh);
+      positionSolve();
+      velocitiesFromPositions(mh);
+      measureClumps();
+      depositHeat(E0 - cloudMechanical());
+    }
+    differentiate(dt);
+    coolMotes(dt);
+    absorbMotes();
+    cullMotes(dt);
+  }
+
+  clumpTimer += dt;
+  if (Motes.count && (clumpTimer > 0.004 * YEAR_UNITS || W.clumps.length === 0)) {
+    clumpTimer = 0;
+    rebuildClumps();
+    trySettle();
+  }
+  W.t += dt;
+}
+
+let last = performance.now();
+function tick(now) {
+  const dtReal = clamp((now - last) / 1000, 0, 0.05);
+  last = now;
+  if (!W.paused) advance(W.rate * dtReal);
+
+  for (const g of spriteGhosts) { g.life += dtReal; g.x += g.vx * W.rate * dtReal; g.y += g.vy * W.rate * dtReal; }
+
+  /* trails sampled by distance travelled, not per frame */
+  if (UI.trails) {
+    for (const b of W.bodies) {
+      const step = 2.2 / cam.scale;
+      if (!b.trailLast || (b.x - b.trailLast[0]) ** 2 + (b.y - b.trailLast[1]) ** 2 > step * step) {
+        b.trail.push([b.x, b.y]); b.trailLast = [b.x, b.y];
+        if (b.trail.length > 260) b.trail.shift();
+      }
+    }
+  }
+  if (UI.follow) { cam.x = UI.follow.x; cam.y = UI.follow.y; }
+
+  drawFrame();
+  if (UI.selected) updateInspector();
+  hud();
+  requestAnimationFrame(tick);
+}
+
+let hudT = 0, fps = 60;
+function hud() {
+  fps = fps * 0.93 + (1000 / Math.max(1, performance.now() - hudT)) * 0.07;
+  hudT = performance.now();
+  $('#hud').innerHTML =
+    '<b>' + W.bodies.length + '</b> bodies · <b>' + Motes.count + '</b> motes · <b>' +
+    W.clumps.length + '</b> clumps<br>' +
+    'year = <b>' + YEAR_UNITS.toFixed(2) + '</b> units · t = <b>' +
+    (W.t / YEAR_UNITS).toFixed(2) + '</b> yr<br>' +
+    '<b>' + fps.toFixed(0) + '</b> fps';
+}
+
+/* ---- window.helxis ------------------------------------------------------ */
+window.helxis = {
+  list: () => W.bodies.map(b => ({
+    id: b.id, name: b.name, cls: className(b), state: stateWord(b),
+    m: b.mass, r: b.radius, x: b.x, y: b.y, vx: b.vx, vy: b.vy,
+    T: b.surfaceT(), rockT: b.rockT(),
+  })),
+  get: id => W.bodies.find(b => b.id === id) || null,
+  add: o => {
+    const b = o.roster ? addRoster(o.roster, o.x || 0, o.y || 0, o.vx || 0, o.vy || 0)
+                       : addWorld(o);
+    bodyAccelerations(W.bodies);
+    return b.id;
+  },
+  remove: id => { const b = W.bodies.find(q => q.id === id); if (b) retireBody(b); return !!b; },
+  step: dt => advance(dt),
+  run: (dt, n) => { for (let i = 0; i < n; i++) advance(dt); },
+  energy: () => totalEnergy(),
+  momentum: () => totalMomentum(),
+  /* per material, including what has left the scene, so the books balance */
+  mass: () => {
+    const c = totalMass(); const out = {};
+    for (let i = 0; i < NMAT; i++) out[MAT_NAMES[i]] = c[i] + escapedMass[i];
+    out.total = compTotal(c) + compTotal(escapedMass);
+    return out;
+  },
+  composition: id => {
+    const b = W.bodies.find(q => q.id === id); if (!b) return null;
+    const out = {}; for (let i = 0; i < NMAT; i++) out[MAT_NAMES[i]] = b.comp[i];
+    return out;
+  },
+  className: id => { const b = W.bodies.find(q => q.id === id); return b ? className(b) : null; },
+  orbit: id => {
+    const b = W.bodies.find(q => q.id === id); if (!b) return null;
+    const h = hostOf(b); if (!h) return null;
+    const o = orbitOf(b, h); if (!o) return null;
+    return Object.assign({ host: h.id, hostName: h.name }, o);
+  },
+  clumps: () => W.clumps.map(c => ({
+    n: c.n, mass: c.mass, x: c.cx, y: c.cy, R: c.R, rockT: c.rockT,
+    axisRatio: c.axisRatio, comp: Array.from(c.comp),
+  })),
+  motes: () => Motes.count,
+  /* replace a body by motes sampled from its layer stack, which is what
+   * §3.5 and §8.5 both do.  Exposed so a test can assert on the sampling
+   * without having to arrange a collision first.                         */
+  shatter: id => {
+    const b = W.bodies.find(q => q.id === id); if (!b) return 0;
+    const n = shatterBody(b).length; retireBody(b); return n;
+  },
+  preset: name => name === undefined ? W.preset : loadPreset(name),
+  rate: v => { if (v === undefined) return W.rate; UI.rateSlider = v; applyRate(); return W.rate; },
+  yearUnit: () => YEAR_UNITS,
+  paused: p => { if (p !== undefined) setPaused(p); return W.paused; },
+  seed: s => srand(s),
+  events: () => W.events.slice(),
+  heat: () => heatLedger.joules,
+  /* design steps 6 to 10, not built yet.  They return null rather than a
+   * plausible number, because a plausible number is worse than nothing.   */
+  aging: () => null, flux: () => null, lagrange: () => null,
+  K,
+};
+window.__H = { Motes, W, Grid, clumps: () => W.clumps };
+
+/* ---- boot -------------------------------------------------------------- */
+resize();
+buildPicker();
+pick(null);                       // the picker starts holding nothing
+wireDeck();
+loadPreset('Solar system');
+fitAll();
+applyRate();
+setPaused(true);
+requestAnimationFrame(tick);
+</script>
+</body>
+</html>
