@@ -28,6 +28,22 @@ const rel = (a, b) => Math.abs(a - b) / Math.max(Math.abs(a), Math.abs(b), 1e-30
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
+page.setDefaultTimeout(0);
+/* Two of these tests drive tens of thousands of steps.  Doing that in one
+ * synchronous block holds the renderer for five minutes at a stretch, and
+ * a renderer that never yields is a renderer Chromium is entitled to kill
+ * - which is exactly how this suite used to die mid-run.  `stepMany` is
+ * installed in the page and yields between chunks; the clock is paused
+ * throughout, so the animation frames that fire in the gap draw and do
+ * not integrate.                                                         */
+await page.addInitScript(() => {
+  window.stepMany = async (n, dt, chunk = 200) => {
+    for (let i = 0; i < n; i += chunk) {
+      helxis.run(dt, Math.min(chunk, n - i));
+      await new Promise(r => setTimeout(r, 0));
+    }
+  };
+});
 page.on('pageerror', e => { fail++; results.push(['FAIL', 'page error', e.message]); });
 await page.goto(PAGE);
 await page.waitForFunction(() => !!window.helxis);
@@ -108,16 +124,13 @@ const run = fn => page.evaluate(fn);
   const r = await run(async () => {
     helxis.preset('Head-on merge'); helxis.paused(true);
     const m0 = helxis.mass();
-    for (let i = 0; i < 6000; i++) helxis.step(0.02);
+    await stepMany(6000, 0.02);
     return { m0, m1: helxis.mass(), motes: helxis.motes(), bodies: helxis.list().length };
   });
   const bad = ['Fe', 'Si', 'C', 'H2O', 'HHe'].filter(k => rel(r.m0[k], r.m1[k]) > 1e-9);
   check('per-material mass conserved through a melt merge', bad.length === 0,
     bad.length ? 'drifted: ' + bad.map(k => `${k} ${rel(r.m0[k], r.m1[k]).toExponential(1)}`).join(', ')
                : `total ${r.m1.total.toFixed(6)} M⊕ intact`);
-  check('momentum holds to a part in a thousand with a cloud sloshing',
-    true, 'measured below');
-  results.pop();
 }
 
 /* -- 6. momentum with a cloud sloshing ---------------------------------- */
@@ -125,23 +138,59 @@ const run = fn => page.evaluate(fn);
   const r = await run(() => {
     helxis.preset('Head-on merge'); helxis.paused(true);
     const p0 = helxis.momentum();
-    const e0 = Math.hypot(p0.px, p0.py);
-    let worst = 0;
+    let worst = 0, scale = 0;
     for (let k = 0; k < 150; k++) {
       for (let i = 0; i < 30; i++) helxis.step(0.02);
       const p = helxis.momentum();
-      const d = Math.hypot(p.px - p0.px, p.py - p0.py) / Math.max(e0, 1e-6);
+      /* the preset starts from rest, so the total is zero and has no size
+       * of its own.  The yardstick is the momentum actually moving about
+       * inside the cloud, which is what a leak would be stealing from.  */
+      if (p.scalar > scale) scale = p.scalar;
+      const d = Math.hypot(p.px - p0.px, p.py - p0.py);
       if (d > worst) worst = d;
     }
-    return { worst, e0 };
+    return { worst: worst / Math.max(scale, 1e-12), abs: worst, scale };
   });
   check('momentum holds to a part in a thousand with a cloud sloshing',
-    r.worst < 1e-3, `worst excursion ${r.worst.toExponential(2)}`);
+    r.worst < 1e-3,
+    `worst excursion ${r.worst.toExponential(2)} of the cloud's own ` +
+    `${r.scale.toExponential(2)} of internal momentum`);
+}
+
+/* -- 6b. momentum with bodies AND rubble in the same sky ----------------- *
+ *  This is the gap the sloshing test could not see.  A head-on merge ends
+ *  up all rubble, so a body that pulls on a mote and feels nothing back
+ *  costs nothing there.  Put a world next to a cloud and it costs four
+ *  percent.                                                              */
+{
+  const r = await run(() => {
+    helxis.preset('Empty sky'); helxis.paused(true);
+    const heavy = helxis.add({ x: 0, y: 0, m: 6, f: { Fe: .32, Si: .68 }, T: 300 });
+    const H = helxis.get(heavy);
+    const light = helxis.add({ x: H.radius * 4, y: 0, vy: 0.35, m: 0.5,
+                               f: { Fe: .3, Si: .6, H2O: .1 }, T: 900 });
+    helxis.shatter(light);
+    const p0 = helxis.momentum();
+    let worst = 0, scale = 0;
+    for (let k = 0; k < 120; k++) {
+      for (let i = 0; i < 25; i++) helxis.step(0.004);
+      const p = helxis.momentum();
+      if (p.scalar > scale) scale = p.scalar;
+      const d = Math.hypot(p.px - p0.px, p.py - p0.py);
+      if (d > worst) worst = d;
+    }
+    return { rel: worst / Math.max(scale, 1e-12), scale,
+             bodies: helxis.list().length, motes: helxis.motes() };
+  });
+  check('momentum holds with a world and its rubble in the same sky',
+    r.rel < 1e-3,
+    `worst excursion ${r.rel.toExponential(2)} of ${r.scale.toExponential(2)}, ` +
+    `ending with ${r.bodies} bod${r.bodies === 1 ? 'y' : 'ies'} and ${r.motes} motes`);
 }
 
 /* -- 7. a molten rock world merged with a gas giant makes no new rock ---- */
 {
-  const r = await run(() => {
+  const r = await run(async () => {
     helxis.preset('Empty sky'); helxis.paused(true);
     const a = helxis.add({ x: -40, y: 0, m: 3, f: { Fe: .3, Si: .7 }, T: 2200 });   // molten rock
     const b = helxis.add({ x: 40, y: 0, m: 40, f: { HHe: .95, Si: .05 }, T: 400 }); // gas
@@ -149,7 +198,7 @@ const run = fn => page.evaluate(fn);
     const v = 0.55 * Math.sqrt(helxis.K.G * (A.mass + B.mass) / (A.radius + B.radius));
     A.vx = v * B.mass / (A.mass + B.mass); B.vx = -v * A.mass / (A.mass + B.mass);
     const m0 = helxis.mass();
-    for (let i = 0; i < 7000; i++) helxis.step(0.02);
+    await stepMany(7000, 0.02);
     return { m0, m1: helxis.mass(), list: helxis.list().map(x => ({ cls: x.cls, m: x.m })) };
   });
   const rock0 = r.m0.Fe + r.m0.Si + r.m0.C, rock1 = r.m1.Fe + r.m1.Si + r.m1.C;
@@ -184,7 +233,7 @@ const run = fn => page.evaluate(fn);
 
 /* -- 9. a moon at the softened circular speed stays on its planet -------- */
 {
-  const r = await run(() => {
+  const r = await run(async () => {
     helxis.preset('Empty sky'); helxis.paused(true);
     const p = helxis.add({ x: 0, y: 0, m: 1, f: { Fe: .32, Si: .68 }, T: 288 });
     const P = helxis.get(p);
@@ -194,7 +243,7 @@ const run = fn => page.evaluate(fn);
     const m = helxis.add({ x: rr, y: 0, vx: 0, vy: v, m: 0.0123, f: { Si: 1 }, T: 250 });
     const o0 = helxis.orbit(m);
     const dt = helxis.yearUnit() / 6000;
-    for (let i = 0; i < 6000 * 2; i++) helxis.step(dt);       // two simulated years
+    await stepMany(6000 * 2, dt);                             // two simulated years
     const o1 = helxis.orbit(m);
     /* what the textbook sqrt(GM/r) would have launched it at */
     const naive = Math.sqrt(helxis.K.G * P.mass / rr);
@@ -209,14 +258,14 @@ const run = fn => page.evaluate(fn);
 
 /* -- 10. the giant impact leaves an iron-poor moon ----------------------- */
 {
-  const r = await run(() => {
+  const r = await run(async () => {
     helxis.preset('Giant impact'); helxis.paused(true);
     const start = helxis.list();
     const proto = start.find(b => b.name === 'proto-Earth');
     const c0 = helxis.composition(proto.id);
     const feProto = c0.Fe / (c0.Fe + c0.Si + c0.C + c0.H2O + c0.HHe);
     const m0 = helxis.mass();
-    for (let i = 0; i < 9000; i++) helxis.step(0.02);
+    await stepMany(9000, 0.02);
     const startIds = start.map(b => b.id);
     const bodies = helxis.list().sort((a, b) => b.m - a.m);
     const out = bodies.map(b => {

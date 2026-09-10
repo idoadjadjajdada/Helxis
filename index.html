@@ -765,12 +765,23 @@ function totalEnergy() {
   return { ke, pe, total: ke + pe };
 }
 
+/* `scalar` is the sum of |m v| over everything in the sky.  A closed
+ * system started from rest has px = py = 0, so a drift in the vector has
+ * nothing of its own size to be measured against; the scalar is the
+ * momentum that is actually moving around inside it, and it is the only
+ * honest yardstick for "did any of this leak".                           */
 function totalMomentum() {
-  let px = 0, py = 0;
-  for (const b of W.bodies) { px += b.mass * b.vx; py += b.mass * b.vy; }
+  let px = 0, py = 0, scalar = 0;
+  for (const b of W.bodies) {
+    px += b.mass * b.vx; py += b.mass * b.vy;
+    scalar += b.mass * Math.hypot(b.vx, b.vy);
+  }
   const M = Motes;
-  for (let i = 0; i < M.count; i++) { px += M.m[i] * M.vx[i]; py += M.m[i] * M.vy[i]; }
-  return { px, py };
+  for (let i = 0; i < M.count; i++) {
+    px += M.m[i] * M.vx[i]; py += M.m[i] * M.vy[i];
+    scalar += M.m[i] * Math.hypot(M.vx[i], M.vy[i]);
+  }
+  return { px, py, scalar };
 }
 
 /* mass in each of the five materials, everywhere in the simulation */
@@ -972,6 +983,25 @@ function shatterBody(b, extraHeat) {
         const vx = b.vx - b.spin * (wy - b.y), vy = b.vy + b.spin * (wx - b.x);
         const id = Motes.spawn(wx, wy, vx, vy, each, mt, addHeat(mt, shells[k].T, dq), rMote);
         if (id >= 0) out.push(id);
+      }
+    }
+  }
+
+  /* Spin about the CLOUD's centre of mass, not the body's nominal centre.
+   * The mote positions are drawn at random and each material's mass is
+   * then allotted across them, so the two centres do not coincide, and
+   * rotating about the wrong one hands the cloud a net kick.  Measured:
+   * a spinning world shattering walked the whole sky off by six parts in
+   * a thousand of its own internal momentum, in one frame.               */
+  if (out.length) {
+    const M = Motes;
+    let sm = 0, sx = 0, sy = 0;
+    for (const i of out) { const m = M.m[i]; sm += m; sx += M.x[i] * m; sy += M.y[i] * m; }
+    if (sm > 0) {
+      const cx = sx / sm, cy = sy / sm;
+      for (const i of out) {
+        M.vx[i] = b.vx - b.spin * (M.y[i] - cy);
+        M.vy[i] = b.vy + b.spin * (M.x[i] - cx);
       }
     }
   }
@@ -1282,6 +1312,7 @@ function rebuildClumps() {
  * step: a monopole aimed at where the cloud was a second ago pulls every
  * mote sideways, and after the self-force is removed that comes out as a
  * shear that tears the cloud apart.                                       */
+let _sxx = new Float64Array(256), _syy = new Float64Array(256), _sxy = new Float64Array(256);
 function measureClumps() {
   const M = Motes, n = M.count;
   for (const c of W.clumps) {
@@ -1304,10 +1335,15 @@ function measureClumps() {
     if (c.mass > 0) { c.cx /= c.mass; c.cy /= c.mass; c.vx /= c.mass; c.vy /= c.mass; }
     if (c.rockM > 0) c.rockT /= c.rockM;
   }
-  /* second moments: angular momentum, spread, and how round it is */
-  const sxx = new Float64Array(W.clumps.length),
-        syy = new Float64Array(W.clumps.length),
-        sxy = new Float64Array(W.clumps.length);
+  /* second moments: angular momentum, spread, and how round it is.
+   * The scratch is hoisted because this runs every mote substep, and
+   * three fresh arrays a substep is a hundred a frame for the collector. */
+  const nc = W.clumps.length;
+  if (_sxx.length < nc) {
+    _sxx = new Float64Array(nc * 2); _syy = new Float64Array(nc * 2); _sxy = new Float64Array(nc * 2);
+  }
+  const sxx = _sxx, syy = _syy, sxy = _sxy;
+  sxx.fill(0, 0, nc); syy.fill(0, 0, nc); sxy.fill(0, 0, nc);
   for (let i = 0; i < n; i++) {
     const ci = M.clump[i]; if (ci < 0 || M.ghost[i]) continue;
     const c = W.clumps[ci], m = M.m[i];
@@ -1372,10 +1408,38 @@ function cloudAccel(M, R, d) {
 Motes.ghost = new Uint8Array(K.MOTE_CAP);
 const _cax = new Float64Array(K.MOTE_CAP), _cay = new Float64Array(K.MOTE_CAP);
 let _cnx = new Float64Array(256), _cny = new Float64Array(256);
+let _cgx = new Float64Array(256), _cgy = new Float64Array(256);
+let _isTop = new Uint8Array(256);
 let _clumpOrder = new Int32Array(0);
 function clumpScratch(nc) {
   if (_cnx.length < nc) { _cnx = new Float64Array(nc * 2); _cny = new Float64Array(nc * 2); }
   _cnx.fill(0, 0, nc); _cny.fill(0, 0, nc);
+}
+function clumpAccelScratch(nc) {
+  if (_cgx.length < nc) { _cgx = new Float64Array(nc * 2); _cgy = new Float64Array(nc * 2); }
+  if (_isTop.length < nc) _isTop = new Uint8Array(nc * 2);
+  _cgx.fill(0, 0, nc); _cgy.fill(0, 0, nc); _isTop.fill(0, 0, nc);
+}
+
+/* The heaviest few clouds, by mass, as indices into W.clumps. */
+function heaviestClumps(k) {
+  const nc = W.clumps.length;
+  let order = _clumpOrder;
+  if (order.length !== nc) order = _clumpOrder = new Int32Array(nc);
+  for (let i = 0; i < nc; i++) order[i] = i;
+  return Array.prototype.slice.call(order)
+    .sort((a, b) => W.clumps[b].mass - W.clumps[a].mass).slice(0, k);
+}
+
+/* Two uniform spheres, centre to centre.  Outside each other it is the
+ * plain inverse square; once the smaller is inside the larger it is the
+ * larger's interior field, which is linear in the separation and finite
+ * at the middle.  Written as a FORCE rather than an acceleration because
+ * the whole point is that both clouds get the same number back.          */
+function pairForce(mA, RA, mB, RB, d) {
+  const Reff = Math.max(RA, RB);
+  if (d >= Reff) return K.G * mA * mB / (d * d + 1e-12);
+  return K.G * mA * mB * d / (Reff * Reff * Reff + 1e-18);
 }
 const escapedMass = zeroComp();
 const SCENE_BOUND = 400000;
@@ -1385,22 +1449,42 @@ function topSources(n) {
   return bs.slice(0, n);
 }
 
+const _bfx = new Float64Array(16), _bfy = new Float64Array(16);
+
 function stepMotes(dt) {
   const M = Motes, n = M.count;
   if (!n) return;
   const src = topSources(6);
+  const ns = src.length;
 
-  /* body gravity */
+  /* Body gravity, and the SAME force the other way.  A body that pulls on
+   * a mote and feels nothing back is a momentum pump, and it is invisible
+   * until a body settles out of a melt while the rest of the melt is
+   * still rubble: three bodies among five hundred motes walked the whole
+   * sky off at four percent of its own internal momentum, all of it
+   * arriving after the first settle.  The reaction is summed per source
+   * and delivered once, so it costs one pass over the sources, not one
+   * over the motes.                                                       */
+  for (let s = 0; s < ns; s++) { _bfx[s] = 0; _bfy[s] = 0; }
   for (let i = 0; i < n; i++) {
     let ax = 0, ay = 0;
-    for (let s = 0; s < src.length; s++) {
+    const mi = M.m[i], live = !M.ghost[i];
+    for (let s = 0; s < ns; s++) {
       const b = src[s];
       const dx = b.x - M.x[i], dy = b.y - M.y[i];
       const r2 = dx * dx + dy * dy + K.SOFT2;
       const inv = b.mass / (r2 * Math.sqrt(r2));
-      ax += dx * inv; ay += dy * inv;
+      const gx = dx * inv, gy = dy * inv;
+      ax += gx; ay += gy;
+      /* a ghost has no mass on the books and is not integrated, so it
+       * neither pulls nor is pulled                                       */
+      if (live) { _bfx[s] -= mi * gx; _bfy[s] -= mi * gy; }
     }
     _cax[i] = ax; _cay[i] = ay;
+  }
+  for (let s = 0; s < ns; s++) {
+    const b = src[s];
+    if (b.mass > 0) { b.vx += _bfx[s] / b.mass * dt; b.vy += _bfy[s] / b.mass * dt; }
   }
 
   /* Cloud cohesion.  A mote feels its OWN cloud as a uniform sphere with
@@ -1418,20 +1502,49 @@ function stepMotes(dt) {
   const nc = W.clumps.length;
   if (nc) {
     clumpScratch(nc);
-    const netx = _cnx, nety = _cny;
-    let order = _clumpOrder;
-    if (order.length !== nc) order = _clumpOrder = new Int32Array(nc);
-    for (let k = 0; k < nc; k++) order[k] = k;
-    const top = Array.prototype.slice.call(order)
-      .sort((a, b) => W.clumps[b].mass - W.clumps[a].mass).slice(0, 8);
+    clumpAccelScratch(nc);
+    const netx = _cnx, nety = _cny, cgx = _cgx, cgy = _cgy;
+    const top = heaviestClumps(8);
+    for (let t = 0; t < top.length; t++) _isTop[top[t]] = 1;
+
+    /* -- cloud on cloud, PAIR BY PAIR ---------------------------------- *
+     *  Aiming each cloud's monopole at each mote of the other separately
+     *  is not equal and opposite: cloud A's pull on B is summed over B's
+     *  motes at their own distances and with A's radius, and B's pull on
+     *  A is a different sum entirely.  The two do not cancel, and a
+     *  head-on merge released from rest walks off at four percent of its
+     *  own internal momentum.  One force per pair, applied uniformly to
+     *  each cloud's motes, is exact to the last bit however the motes are
+     *  arranged.  It costs the tide between two clouds, which a monopole
+     *  never had any business claiming to resolve anyway.
+     *
+     *  The pair SET is still the heaviest-eight bargain: every pair with
+     *  a heavy cloud in it is evaluated, and light-on-light is dropped.
+     *  Which pairs are in the set does not matter to conservation - only
+     *  that a pair, once in, gets both halves of its force.              */
+    for (let t = 0; t < top.length; t++) {
+      const a = top[t], A = W.clumps[a];
+      if (A.mass <= 0) continue;
+      for (let b = 0; b < nc; b++) {
+        if (b === a || (_isTop[b] && b < a)) continue;   // each pair exactly once
+        const B = W.clumps[b];
+        if (B.mass <= 0) continue;
+        const dx = B.cx - A.cx, dy = B.cy - A.cy;
+        const d = Math.hypot(dx, dy);
+        if (d < 1e-12) continue;
+        const f = pairForce(A.mass, A.R, B.mass, B.R, d) / d;
+        cgx[a] += f * dx / A.mass; cgy[a] += f * dy / A.mass;
+        cgx[b] -= f * dx / B.mass; cgy[b] -= f * dy / B.mass;
+      }
+    }
+
+    /* -- a cloud on itself --------------------------------------------- */
     for (let i = 0; i < n; i++) {
       if (M.ghost[i]) continue;
       const own = M.clump[i];
-      for (let t = -1; t < top.length; t++) {
-        const ci = t < 0 ? own : top[t];
-        if (ci < 0 || (t >= 0 && ci === own)) continue;
-        const c = W.clumps[ci];
-        const Meff = ci === own ? c.mass - M.m[i] : c.mass;  // nothing pulls on itself
+      if (own >= 0) {
+        const c = W.clumps[own];
+        const Meff = c.mass - M.m[i];                  // nothing pulls on itself
         if (Meff <= 0) continue;
         const dx = c.cx - M.x[i], dy = c.cy - M.y[i];
         const d = Math.hypot(dx, dy);
@@ -1439,16 +1552,35 @@ function stepMotes(dt) {
         const g = cloudAccel(Meff, c.R, d) / d;
         const ax = dx * g, ay = dy * g;
         _cax[i] += ax; _cay[i] += ay;
-        /* only a cloud's pull on ITSELF is spurious and has to be handed
-         * back; its pull on another cloud is real and stays               */
-        if (ci === own) { netx[ci] += M.m[i] * ax; nety[ci] += M.m[i] * ay; }
+        /* a cloud that is not round pushes on itself; the net of that is
+         * spurious and is handed back below                              */
+        netx[own] += M.m[i] * ax; nety[own] += M.m[i] * ay;
+      } else {
+        /* A mote spawned since the last connectivity pass belongs to no
+         * cloud yet.  It still feels the heaviest few, and they feel it
+         * back - otherwise every shatter is a free kick.                 */
+        for (let t = 0; t < top.length; t++) {
+          const ci = top[t], c = W.clumps[ci];
+          if (c.mass <= 0) continue;
+          const dx = c.cx - M.x[i], dy = c.cy - M.y[i];
+          const d = Math.hypot(dx, dy);
+          if (d < 1e-12) continue;
+          const g = cloudAccel(c.mass, c.R, d) / d;
+          const ax = dx * g, ay = dy * g;
+          _cax[i] += ax; _cay[i] += ay;
+          cgx[ci] -= M.m[i] * ax / c.mass; cgy[ci] -= M.m[i] * ay / c.mass;
+        }
       }
     }
+
+    /* every mote of a cloud gets that cloud's bulk pull, and gives back
+     * its share of the cloud's spurious grip on itself                   */
     for (let i = 0; i < n; i++) {
       if (M.ghost[i]) continue;
       const ci = M.clump[i]; if (ci < 0) continue;
       const c = W.clumps[ci]; if (c.mass <= 0) continue;
-      _cax[i] -= netx[ci] / c.mass; _cay[i] -= nety[ci] / c.mass;
+      _cax[i] += cgx[ci] - netx[ci] / c.mass;
+      _cay[i] += cgy[ci] - nety[ci] / c.mass;
     }
   }
 
@@ -1478,7 +1610,6 @@ function stepMotes(dt) {
  * blows the cloud apart, which is what it did the first time.            */
 const DIFF_SPEED = 0.035, DIFF_RELAX = 4;
 function differentiate(dt) {
-  if (window.__noDiff) return;
   const M = Motes, n = M.count, nc = W.clumps.length;
   if (!n || !nc) return;
   clumpScratch(nc);
@@ -1642,7 +1773,7 @@ function settleClump(ci, c) {
   for (let k = 0; k < members.length; k++) {
     const i = members[k];
     acc[M.mat[i]] += M.m[i]; accM += M.m[i]; accT += M.m[i] * M.T[i];
-    const done = (shells.length < nBins - 1 && accM >= per * (shells.length + 1)) ||
+    const done = (shells.length < nBins - 1 && accM >= per) ||
                  k === members.length - 1;
     if (done) {
       shells.push({ comp: acc, T: accM > 0 ? accT / accM : AMBIENT_T });
@@ -3320,8 +3451,6 @@ window.helxis = {
   aging: () => null, flux: () => null, lagrange: () => null,
   K,
 };
-window.__H = { Motes, W, Grid, clumps: () => W.clumps };
-
 /* ---- boot -------------------------------------------------------------- */
 resize();
 buildPicker();

@@ -215,6 +215,83 @@ relation needing real units.
 
 ---
 
+## Nine modelling errors the building turned up
+
+Every one of these announced itself as something that looked wrong on screen,
+and every one of them turned out to be a wrong *model* rather than a wrong
+number. They are listed because a fix is only worth anything if the mistake is
+on the record next to it.
+
+**The assembly energy was delivered twice.** The design's gravitational floor
+was handed over at contact, and then the motes fell together and released it
+again. Two merged Earths sat at 24,000 K before anything had moved. The impact
+measurement now reports the gravitational term without delivering it: the
+pieces a collision throws *are* the blast, and they still have the fall in
+them.
+
+**Temperature was linear in energy.** With no latent heat a merge reached
+100,000 K, which is not a magma ocean and not anything else either. Silicate's
+heat of vaporisation is 1.3e7 J/kg, eight times what melting it costs. There is
+a four-segment enthalpy curve now — sensible heat, latent fusion, sensible
+heat, latent vaporisation — and a melt sitting at its boiling point absorbs
+energy without getting any hotter, because that is what boiling is.
+
+**A cloud's full monopole imploded it.** Pulling every mote toward the centre
+with the whole cloud's mass gives a mote near the middle an acceleration in the
+thousands. The first fix was a tabulated enclosed mass, which fixed the force
+and broke the energy: a field that depends on the configuration is not
+conservative, the profile shifts under the motes as they move, and every shift
+is a free joule. Measured, that leak ran at eight times the cloud's entire
+mechanical budget and came out as thirty thousand kelvin. A uniform sphere is
+exact inside and out, has no central singularity, and given a mass and a radius
+is a fixed central potential, so it conserves. Its binding energy is the same
+`3GM²/5R` the settling test already measures against.
+
+**Fragments stopped attracting each other.** Reading the monopole rule as
+strictly own-cloud-only made fragmentation permanent: the instant a shock puffed
+a melt into seven pieces the pieces flew apart in straight lines forever, with
+no mote anywhere near escape velocity. It also made re-accretion impossible.
+Clouds feel the heaviest few other clouds now — the same fixed-source-count
+bargain the top-six body rule strikes.
+
+**A cloud's pull on another cloud was not equal and opposite.** Aiming each
+cloud's monopole at each mote of the other separately sums A's pull on B over
+B's motes at their own distances and with A's radius, and B's pull on A over a
+different set entirely. The two do not cancel. A head-on merge released from
+rest walked off at four percent of its own internal momentum. It is one force
+per pair now, applied uniformly to each cloud's motes, which is exact to the
+last bit however the motes are arranged. Which pairs are in the set is a
+performance choice and does not touch conservation; that a pair once in gets
+both halves of its force is what does. The price is stated in the list below.
+
+**A body pulled on a mote and felt nothing back.** This one hid behind the one
+above: with no body in the sky there is nothing to notice. It surfaced the
+moment a world settled out of a melt while the rest of the melt was still
+rubble — three bodies among five hundred motes, and the whole drift arrived
+after the first settle. The reaction is summed per source body and delivered
+once, so it costs a pass over six sources rather than a pass over the motes.
+
+**A shattering body span about the wrong centre.** Mote positions are drawn at
+random and each material's mass is then allotted across them, so the cloud's
+centre of mass is not the body's nominal centre. Rotating the cloud about the
+body's centre instead handed it a net kick: six parts in a thousand of the
+sky's momentum, in one frame, every time something spinning came apart.
+
+**Live motes landed in ghost slots.** `Motes.ghost` was declared after the
+object literal that defines `spawn` and `remove`, so `spawn` did not clear the
+flag and `remove` did not carry it when swapping with the last slot. Live motes
+inherited a dead slot's flag and faded out still carrying their mass: 38 M⊕ of
+hydrogen came out as 27.09. Found by monkey-patching `Motes.remove` with a
+stack-trace tally, which is the only way anyone was going to find it.
+
+**A four-layer settle made three layers.** The radial binning compared a
+per-shell accumulator against a cumulative threshold, so the shells came out at
+one, two and one quarters of the mass instead of four even ones. Mass per
+material was exact throughout, which is why no test caught it; the layering was
+simply not the layering it claimed to be.
+
+---
+
 ## What is deliberately wrong, and must be said out loud
 
 A simulation that hides its fudges is worse than one that has none.
@@ -229,11 +306,18 @@ A simulation that hides its fudges is worse than one that has none.
 5. **Moon orbital radii** will be scaled to a fraction of the Hill sphere when
    step 12 lands, because the planets are 25 times too wide.
 
-Two things sit next to that list without being on it. A magma ocean here cools
+Three things sit next to that list without being on it. **There is no tide
+between two clouds.** A cloud feels another cloud as one force through its
+centre of mass, which is what makes the pair exactly equal and opposite, and a
+uniform force cannot stretch anything. The per-mote version it replaced was a
+shear with a momentum leak attached rather than an honest tide, so nothing
+measured was lost, but a cloud passing close to a heavier one will not be drawn
+out into a streamer here. Bodies still raise a tide on motes, because a mote
+feels bodies one at a time. Second, a magma ocean here cools
 in a few hundred simulated years, where a real one takes a hundred thousand or
 more. That is not a chosen constant; it follows from modelling a melt as
 free-radiating blobs a hundred kilometres across, with no crust to insulate
-them. And radiation pressure, when step 9 lands, will have to read a nominal
+them. Third, radiation pressure, when step 9 lands, will have to read a nominal
 grain size rather than a mote's real mass, because a mote weighs a chunk of a
 planet and its true ratio of light to gravity is about 1e-20. That one will
 join the list.
@@ -265,6 +349,12 @@ not depend on machine speed. The tests that matter are physical rather than
 behavioural, because those catch an integrator regression that no amount of
 clicking around would reveal.
 
+Two of the tests drive tens of thousands of steps, so the harness installs a
+`stepMany` helper in the page that yields between chunks. Holding the renderer
+for five minutes in one synchronous block is how the suite used to die
+mid-run. The clock stays paused throughout, so the animation frames that fire
+in the gaps draw and do not integrate.
+
 The giant-impact test is marked stochastic. Whether the largest surviving
 fragment has settled into a body or is still a clump when the clock stops sits
 close enough to its threshold that a single run can fall either side. Re-run it
@@ -279,6 +369,12 @@ before investigating.
 
 `mass()` counts material that has left the scene as well as material still in
 it, so the books balance even after something escapes.
+
+`momentum()` returns `px` and `py` and also `scalar`, the sum of `|mv|` over
+everything in the sky. A system started from rest has `px = py = 0`, so a drift
+in the vector has nothing its own size to be measured against; `scalar` is the
+momentum actually moving around inside it, and it is the only honest
+denominator for "did any of this leak".
 
 ## Controls
 
