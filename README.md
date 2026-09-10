@@ -360,6 +360,19 @@ fragment has settled into a body or is still a clump when the clock stops sits
 close enough to its threshold that a single run can fall either side. Re-run it
 before investigating.
 
+It is also the weakest test in the file, and it should be said here rather than
+discovered later. It asks only that the largest thrown fragment be iron-poor
+compared with the proto-Earth, and the fragment it currently finds is
+1.45e-4 M⊕ — a pebble. The design's actual claim is that a giant impact leaves
+a **Moon**, which is 0.0123 M⊕, a hundred times heavier. Passing this check is
+necessary and nowhere near sufficient.
+
+The two long tests are expensive: the gas-giant merge costs about six minutes
+and the giant impact about thirty-three, because it drives nine thousand steps
+over ten thousand motes with an eight-iteration contact solve on each of
+sixteen substeps. Budget three quarters of an hour for a full run and write the
+output to a file.
+
 ## The scripting hook
 
 `window.helxis` exposes `list()`, `add()`, `remove()`, `step(dt)`, `run(dt, n)`,
