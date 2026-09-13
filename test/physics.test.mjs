@@ -377,6 +377,56 @@ section('Regressions found in review');
     worst === 0, `${events} multi-body outcomes, worst ${worst} overlapping pairs`);
 }
 {
+  // Debris has to LEAVE. The fragments of a disrupted body were laid out on a
+  // ring at one fixed radius and then each given a launch direction picked
+  // independently of the angle it was standing at, so a piece on the right-hand
+  // side could be flying left. Measured over forty disruptions, the debris was
+  // moving inward on average — alignment -0.65 — which is why a catastrophic
+  // impact read as a bangle of remnants hung around the survivor rather than as
+  // a body coming apart.
+  //
+  // The quantity is the mean of v-hat . r-hat in the products' centre-of-mass
+  // frame: +1 is every piece flying straight out from where it stands, 0 is a
+  // piece's motion telling you nothing about where it is, and negative is a
+  // cloud falling back in on itself.
+  let worstAlign = 1, events = 0;
+  for (let k = 0; k < 40; k++) {
+    const mt = M_EARTH * 0.1;
+    const mp = mt * 0.5;
+    const t = new Body({ name: 'T', mass: mt, composition: { iron: 0.32, silicate: 0.68 } });
+    const probe = new Body({ mass: mp, composition: { iron: 0.3, silicate: 0.7 } });
+    const rs = t.radius + probe.radius;
+    const bp = (k % 7) / 9;
+    const p = new Body({
+      name: 'P', mass: mp, composition: { iron: 0.3, silicate: 0.7 },
+      x: Math.sqrt(Math.max(0, 1 - bp * bp)) * rs * 0.999, y: bp * rs * 0.999,
+      vx: -40000, seed: k,
+    });
+    const out = resolveCollision(t, p, { maxFragments: 48 });
+    const products = out.added || [];
+    const debris = products.filter((b) => b.kind === 'debris');
+    if (debris.length < 6) continue;
+    events++;
+    let M = 0, cx = 0, cy = 0, cvx = 0, cvy = 0;
+    for (const b of products) {
+      M += b.mass; cx += b.x * b.mass; cy += b.y * b.mass;
+      cvx += b.vx * b.mass; cvy += b.vy * b.mass;
+    }
+    cx /= M; cy /= M; cvx /= M; cvy /= M;
+    let align = 0;
+    for (const b of debris) {
+      const dx = b.x - cx, dy = b.y - cy, d = Math.hypot(dx, dy) || 1;
+      const vx = b.vx - cvx, vy = b.vy - cvy, v = Math.hypot(vx, vy) || 1;
+      align += (dx / d) * (vx / v) + (dy / d) * (vy / v);
+    }
+    align /= debris.length;
+    if (align < worstAlign) worstAlign = align;
+  }
+  assert('disruption debris flies away from where it was standing',
+    worstAlign > 0.5,
+    `${events} disruptions, worst mean outward alignment ${worstAlign.toFixed(3)} (was -0.65)`);
+}
+{
   // A wider sweep of the same thing: mass ratio, impact parameter and speed
   // together, checking every conserved quantity at once. This is the grid that
   // found the ejecta overlaps, so it stays.

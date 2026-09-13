@@ -158,6 +158,74 @@ function ringLayout(radii, clearance, startAngle = 0, span = TAU) {
 }
 
 /**
+ * Scatter pieces through the volume the body occupied, without any of them
+ * starting inside one another.
+ *
+ * `ringLayout` puts every piece at the same distance from the centre. That is
+ * what makes a disruption read as a decoration arranged around a survivor
+ * rather than as a body coming apart: a ring of evenly spaced beads is not a
+ * shape matter takes. Worse, the ring's callers then picked each piece's
+ * launch direction independently of the angle it was standing at, so a
+ * fragment on the right-hand side could be flying left.
+ *
+ * Debris is the body's own material. It starts roughly where that material
+ * was — spread through the volume, not around its rim — and it moves apart
+ * from where it started. So the layout returns an offset per piece and the
+ * caller reads the launch direction off that same offset.
+ *
+ * Pieces are placed largest first by rejection sampling inside a disc that
+ * grows until they all fit, because being born overlapping is the one thing
+ * the ring was genuinely protecting against: pieces created inside each other
+ * are shattered again by the very next contact pass, which is how eighteen
+ * asteroids once became twelve hundred fragments in seven thousand
+ * interpenetrating pairs.
+ */
+function cloudLayout(radii, R0, rng) {
+  const n = radii.length;
+  const order = radii.map((r, i) => i).sort((i, j) => radii[j] - radii[i]);
+  // Start from a disc that can hold the pieces at a comfortable packing
+  // fraction, never smaller than the body they came out of.
+  let area = 0, max = 0;
+  for (const r of radii) { area += r * r; if (r > max) max = r; }
+  let R = Math.max(R0, max, Math.sqrt(area / 0.40));
+  const at = new Array(n);
+
+  for (let grow = 0; grow < 10; grow++) {
+    at.fill(undefined);
+    let all = true;
+    for (let k = 0; k < n; k++) {
+      const i = order[k], ri = radii[i];
+      const reach = Math.max(R - ri, 1e-9);
+      let placed = false;
+      for (let t = 0; t < 160; t++) {
+        // uniform by area, so the cloud is not centre-heavy
+        const q = reach * Math.sqrt(rng()), th = TAU * rng();
+        const x = Math.cos(th) * q, y = Math.sin(th) * q;
+        let clear = true;
+        for (let m = 0; m < k; m++) {
+          const j = order[m], p = at[j];
+          if (!p) continue;
+          const dx = p.x - x, dy = p.y - y, rr = radii[j] + ri;
+          if (dx * dx + dy * dy < rr * rr) { clear = false; break; }
+        }
+        if (clear) { at[i] = { x, y }; placed = true; break; }
+      }
+      if (!placed) { all = false; break; }
+    }
+    if (all) return { R, at };
+    R *= 1.3;
+  }
+
+  // The disc genuinely will not hold them: fall back to the ring, which always
+  // fits, rather than returning pieces born inside one another.
+  const ring = ringLayout(radii, R0, rng() * TAU);
+  for (let i = 0; i < n; i++) {
+    at[i] = { x: Math.cos(ring.angles[i]) * ring.ringR, y: Math.sin(ring.angles[i]) * ring.ringR };
+  }
+  return { R: ring.ringR, at };
+}
+
+/**
  * Earliest contact along two straight displacements, as a fraction of the step.
  *
  * The swept test has to run over the interval that was just integrated, not the
@@ -551,8 +619,11 @@ function doMerge(target, proj, ctx) {
       // anyway. Start from the clumps.
       const n = 1 + Math.floor(rng() * 3);
       const R = merged.radius;
-      // Just outside the Roche limit, where the sheet can re-accrete.
-      const r = R * (2.2 + rng() * 2.0);
+      // Just outside the Roche limit, where the sheet can re-accrete. Each
+      // clump draws its own radius: a sheet torn off a mantle does not settle
+      // into a single circular orbit with every clump at the same distance,
+      // and two clumps that share one never drift apart.
+      const bandR = () => R * (2.2 + rng() * 2.0);
       const masses = [];
       let left = discMass;
       for (let i = 0; i < n; i++) {
@@ -567,8 +638,11 @@ function doMerge(target, proj, ctx) {
         const m = masses[i];
         if (m <= 0) continue;
         const th = discLayout.angles[i];
+        const r = Math.max(bandR(), discLayout.ringR);
         // Prograde with the impact, so the moon orbits the way the blow came.
-        const vOrb = Math.sqrt((G * Mtot) / r) * sense;
+        // Slightly under the circular speed, so the sheet is on eccentric
+        // orbits that cross and re-accrete rather than a frozen bangle.
+        const vOrb = Math.sqrt((G * Mtot) / r) * sense * (0.92 + rng() * 0.13);
         discBodies.push(new Body({
           name: 'Impact debris', kind: 'debris',
           x: comX + Math.cos(th) * r,
@@ -708,10 +782,15 @@ function doCratering(target, proj, ctx) {
     for (let i = 0; i < n; i++) {
       const ang = layout.angles[i];
       const speed = vEscT * (1.05 + rng() * 0.9);
+      // How far out a piece already is, is how fast it left. Every piece at
+      // the same radius is what made ejecta read as a ring drawn around the
+      // crater rather than as a spray coming off it. Never inside `ringR`,
+      // which is the spacing that keeps the pieces out of each other.
+      const launchR = layout.ringR * Math.max(1, speed / vEscT);
       const f = new Body({
         name: 'Ejecta', kind: 'debris',
-        x: target.x + nx * (target.radius + layout.ringR) + Math.cos(ang) * layout.ringR,
-        y: target.y + ny * (target.radius + layout.ringR) + Math.sin(ang) * layout.ringR,
+        x: target.x + nx * (target.radius + layout.ringR) + Math.cos(ang) * launchR,
+        y: target.y + ny * (target.radius + layout.ringR) + Math.sin(ang) * launchR,
         vx: target.vx + Math.cos(ang) * speed,
         vy: target.vy + Math.sin(ang) * speed,
         mass: each,
@@ -816,10 +895,13 @@ function doHitAndRun(target, proj, ctx) {
     for (let i = 0; i < n; i++) {
       const ang = layout.angles[i];
       const speed = vEsc * (0.9 + rng() * 1.2);
+      // Same again: the spread in distance is the spread in speed, floored at
+      // the layout's own spacing so nothing is born inside its neighbour.
+      const launchR = layout.ringR * Math.max(1, speed / vEsc);
       fragments.push(new Body({
         name: 'Debris', kind: 'debris',
-        x: proj.x + Math.cos(ang) * layout.ringR,
-        y: proj.y + Math.sin(ang) * layout.ringR,
+        x: proj.x + Math.cos(ang) * launchR,
+        y: proj.y + Math.sin(ang) * launchR,
         vx: (target.vx + proj.vx) / 2 + Math.cos(ang) * speed,
         vy: (target.vy + proj.vy) / 2 + Math.sin(ang) * speed,
         mass: each,
@@ -967,26 +1049,35 @@ function doDisruption(target, proj, ctx) {
   // angular spacing does not work: give each piece an arc proportional to its
   // own size, on a ring sized to hold the lot.
   const fragRadii = fragments.map((m) => radiusFromMass(m, comp));
-  const layout = ringLayout(fragRadii, largest.radius * 1.2, rng() * TAU);
+  const layout = cloudLayout(fragRadii, largest.radius * 1.2, rng);
 
   const bodies = [];
   for (let i = 0; i < fragments.length; i++) {
     const m = fragments[i];
-    const ang = layout.angles[i];
-    // Fragments are launched preferentially along the impact axis, which is
-    // where the shock actually goes.
-    const bias = 0.45;
-    const impactAng = Math.atan2(ny, nx);
-    const dir = ang * (1 - bias) + (impactAng + (rng() < 0.5 ? 0 : Math.PI) + gaussian(rng) * 0.5) * bias;
-    const speed = Math.abs(vChar * (0.5 + Math.abs(gaussian(rng)) * 0.6));
-    const rad = fragRadii[i];
-    const launchR = layout.ringR;
+    const off = layout.at[i];
+    const d = Math.hypot(off.x, off.y);
+    // A piece flies out along the radius it is standing on. Position and
+    // velocity are the same fact about the same material, so reading them off
+    // each other is what makes the cloud expand instead of churn.
+    const ux = d > 1e-9 ? off.x / d : Math.cos(rng() * TAU);
+    const uy = d > 1e-9 ? off.y / d : Math.sin(rng() * TAU);
+    // Homologous expansion: what ends up furthest out is what is moving
+    // fastest, which is why a disrupted body keeps its shape while it grows
+    // rather than turning inside out.
+    const frac = clamp(d / Math.max(layout.R, 1e-9), 0, 1);
+    // The shock goes preferentially along the impact axis, so material lying
+    // that way leaves faster. Done as a speed, not as an added direction: a
+    // direction that ignores where the piece was standing is what let a
+    // fragment on one side fly out the other.
+    const along = Math.abs(ux * nx + uy * ny);
+    const speed = Math.abs(vChar * (0.30 + 0.85 * frac) * (0.65 + 0.7 * along)
+                           * (0.75 + Math.abs(gaussian(rng)) * 0.45));
     bodies.push(new Body({
       name: 'Fragment', kind: 'debris',
-      x: comX + Math.cos(ang) * launchR,
-      y: comY + Math.sin(ang) * launchR,
-      vx: comVx + Math.cos(dir) * speed,
-      vy: comVy + Math.sin(dir) * speed,
+      x: comX + off.x,
+      y: comY + off.y,
+      vx: comVx + ux * speed,
+      vy: comVy + uy * speed,
       mass: m,
       composition: rng() < 0.3 ? mixCompositions(comp, 0.5, target.coreComposition, 0.5) : comp,
       temperature: Math.max(600, (target.temperature + proj.temperature) / 2 + 800 * (kImpact / Math.max(1, Mtot * 1e5))),
