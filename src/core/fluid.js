@@ -82,31 +82,31 @@ export function solveFluid(g, dt, opts = {}) {
       const i = f.edges[k], j = f.edges[k + 1];
       const limit = Math.min(1, 0.2 * g.r[i] / (f.travel[i] || 1),
         0.2 * g.r[j] / (f.travel[j] || 1));
-      const dx = f.edges[k + 2] * limit, dy = f.edges[k + 3] * limit;
-      f.dx[i] += dx / g.mass[i]; f.dy[i] += dy / g.mass[i];
-      f.dx[j] -= dx / g.mass[j]; f.dy[j] -= dy / g.mass[j];
-      // Project approaching normal velocity without adding kinetic energy.
-      // Blindly adding displacement/dt converts residual packing error into
-      // unbounded energy as dt shrinks during a hot impact. The geometric
-      // density correction supports volume; this inelastic central impulse
-      // supports velocity and deposits its actual dissipation as heat.
-      const length = Math.hypot(dx, dy);
-      if (length > 0) {
-        const nx = dx / length, ny = dy / length;
-        const vn = (g.vx[i] - g.vx[j]) * nx + (g.vy[i] - g.vy[j]) * ny;
-        if (vn < 0) {
-          const invMass = 1 / g.mass[i] + 1 / g.mass[j];
-          const impulse = Math.min(length / dt, -vn / invMass);
-          g.vx[i] += impulse * nx / g.mass[i]; g.vy[i] += impulse * ny / g.mass[i];
-          g.vx[j] -= impulse * nx / g.mass[j]; g.vy[j] -= impulse * ny / g.mass[j];
-          const heat = -impulse * vn - 0.5 * impulse * impulse * invMass;
-          g.addHeat(i, heat * 0.5); g.addHeat(j, heat * 0.5);
-        }
-      }
-    }
-    for (let i = 0; i < g.n; i++) {
-      const dx = f.dx[i], dy = f.dy[i];
-      g.x[i] += dx; g.y[i] += dy;
+      const length = Math.hypot(f.edges[k + 2], f.edges[k + 3]) * limit;
+      const rx = g.x[i] - g.x[j], ry = g.y[i] - g.y[j];
+      const distance = Math.hypot(rx, ry);
+      if (!(length > 0 && distance > 0)) continue;
+      const nx = rx / distance, ny = ry / distance;
+      const invMass = 1 / g.mass[i] + 1 / g.mass[j];
+      const reduced = 1 / invMass;
+      const vx = g.vx[i] - g.vx[j], vy = g.vy[i] - g.vy[j];
+      const vn = vx * nx + vy * ny, vt = -vx * ny + vy * nx;
+      const impulse = vn < 0 ? Math.min(length / dt, -vn * reduced) : 0;
+      const expanded = distance + length * invMass;
+      // Geometric pressure correction changes the lever arm. Carry the pair's
+      // angular momentum through that change instead of silently creating it:
+      // reduced*d*vt = reduced*expanded*vtNew. Both kinetic losses become heat.
+      const ratio = distance / expanded;
+      const tangentImpulse = reduced * vt * (ratio - 1);
+      const jx = impulse * nx - tangentImpulse * ny;
+      const jy = impulse * ny + tangentImpulse * nx;
+      g.vx[i] += jx / g.mass[i]; g.vy[i] += jy / g.mass[i];
+      g.vx[j] -= jx / g.mass[j]; g.vy[j] -= jy / g.mass[j];
+      g.x[i] += length * nx / g.mass[i]; g.y[i] += length * ny / g.mass[i];
+      g.x[j] -= length * nx / g.mass[j]; g.y[j] -= length * ny / g.mass[j];
+      const heat = -impulse * vn - 0.5 * impulse * impulse * invMass
+        + 0.5 * reduced * vt * vt * (1 - ratio * ratio);
+      g.addHeat(i, heat * 0.5); g.addHeat(j, heat * 0.5);
     }
   }
 }

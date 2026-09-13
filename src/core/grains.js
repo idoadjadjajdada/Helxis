@@ -240,7 +240,7 @@ export class GrainSystem {
     this.thermal(dt, opts);
 
     // --- viscosity ----------------------------------------------------------
-    this.viscosity(opts);
+    this.viscosity(opts, dt);
   }
 
   /** Accelerations from the parcels' own gravity. */
@@ -465,7 +465,8 @@ export class GrainSystem {
     const vn = rvx * nx + rvy * ny;      // < 0 approaching
 
     const soft = Math.max(this.melt[i], this.melt[j]);
-    const overlap = rsum - d;
+    const liquid = Math.min(this.melt[i], this.melt[j]);
+    const overlap = rsum * (1 - 0.6 * liquid) - d;
 
     if (overlap > 0) {
       // Separate them. Molten parcels are allowed to stay closer together —
@@ -477,8 +478,7 @@ export class GrainSystem {
       // of a parcel per pass; four passes clear the rest.
       // Melt is supported by the density solve. Keep only a small collision
       // core to prevent coincident parcels; a full solid diameter jams shear.
-      const liquid = Math.min(this.melt[i], this.melt[j]);
-      const raw = Math.max(0, rsum * (1 - 0.6 * liquid) - d) * 0.85;
+      const raw = overlap * 0.85;
       const push = Math.min(raw, Math.min(this.r[i], this.r[j]) * 0.25);
       this.x[i] -= nx * push * (mj * inv);
       this.y[i] -= ny * push * (mj * inv);
@@ -546,34 +546,14 @@ export class GrainSystem {
     }
   }
 
-  /**
-   * What makes melt behave like a liquid rather than a bag of marbles.
-   *
-   * Contact alone gives you hard spheres: they bounce off each other, they jam,
-   * and a molten body ends up looking like gravel that happens to glow. Real
-   * liquid drags its neighbours along — that is what viscosity is — so each
-   * molten parcel is pulled toward the average velocity of the ones around it,
-   * in proportion to how melted both are. Solid parcels are untouched, which is
-   * what keeps a rock a rock.
-   *
-   * This is the XSPH correction, and it is applied to velocity directly rather
-   * than as a force because it is a smoothing, not an interaction: it conserves
-   * momentum exactly by construction, since every exchange is symmetric.
-   */
-  viscosity(opts) {
+  /** Central shock smoothing: conserve both momenta; dissipate into heat. */
+  viscosity(opts, dt = 1) {
     const n = this.n;
     const g = this._grid;
     if (!g || n === 0) return;
     const strength = opts.viscosity != null ? opts.viscosity : 0.35;
     if (strength <= 0) return;
     const packed = this._nbCount;
-
-    if (!this._vax || this._vax.length < this.cap) {
-      this._vax = new Float64Array(this.cap);
-      this._vay = new Float64Array(this.cap);
-    }
-    const ax = this._vax, ay = this._vay;
-    ax.fill(0, 0, n); ay.fill(0, 0, n);
 
     const { minX, minY, cols, rows, size } = g;
     for (let i = 0; i < n; i++) {
@@ -605,21 +585,25 @@ export class GrainSystem {
               ? Math.min(1, (Math.min(packed[i], packed[j]) || 0) / 5)
               : 1;
             if (dens <= 0) continue;
-            const k = strength * w * soft * dens;
+            if (!(d2 > 0)) continue;
+            const distance = Math.sqrt(d2), nx = dx / distance, ny = dy / distance;
             const mi = this.mass[i], mj = this.mass[j];
-            const dvx = this.vx[j] - this.vx[i], dvy = this.vy[j] - this.vy[i];
-            // Symmetric and mass-weighted: momentum in equals momentum out.
-            const share = k / (mi + mj);
-            ax[i] += dvx * mj * share; ay[i] += dvy * mj * share;
-            ax[j] -= dvx * mi * share; ay[j] -= dvy * mi * share;
+            const vn = (this.vx[j] - this.vx[i]) * nx + (this.vy[j] - this.vy[i]) * ny;
+            if (vn >= 0) continue;
+            // A central artificial viscosity for unresolved compression.
+            // Rigid rotation has vn=0. Unlike XSPH averaging, this preserves
+            // angular momentum and vanishes as strain or elapsed time vanish.
+            const k = -Math.expm1(-strength * w * soft * dens * (-vn) * dt / rr);
+            const reduced = mi * mj / (mi + mj), impulse = -vn * reduced * k;
+            this.vx[i] -= impulse * nx / mi; this.vy[i] -= impulse * ny / mi;
+            this.vx[j] += impulse * nx / mj; this.vy[j] += impulse * ny / mj;
+            const heat = 0.5 * reduced * vn * vn * k * (2 - k);
+            this.addHeat(i, heat * 0.5); this.addHeat(j, heat * 0.5);
           }
         }
       }
     }
-    for (let i = 0; i < n; i++) {
-      if (ax[i] === 0 && ay[i] === 0) continue;
-      this.vx[i] += ax[i]; this.vy[i] += ay[i];
-    }
+
   }
 
   /** Specific enthalpy, including fusion across the material's melt interval. */

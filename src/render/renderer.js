@@ -292,7 +292,9 @@ export class Renderer {
     const w = ctx.canvas.width, h = ctx.canvas.height;
     const halfW = w / 2, halfH = h / 2;
 
+    this.drawMeltSurface(ctx, g, cam);
     for (let i = 0; i < n; i++) {
+      if (g.melt[i] > 0.4) continue;
       const dx = g.x[i] - cam.x, dy = g.y[i] - cam.y;
       const sx = halfW + (dx * cos - dy * sin) * scale;
       const sy = halfH + (dx * sin + dy * cos) * scale;
@@ -320,6 +322,56 @@ export class Renderer {
       const d = Math.max(1, Math.round(rp * 2));
       ctx.fillRect(Math.round(sx - d / 2), Math.round(sy - d / 2), d, d);
     }
+  }
+
+  // Reconstruct a continuous molten surface on the existing pixel buffer.
+  // Colour follows the local parcels; this changes no physical positions.
+  drawMeltSurface(ctx, g, cam) {
+    const width = ctx.canvas.width, height = ctx.canvas.height, size = width * height;
+    if (!this._meltSurface || this._meltSurface.size !== size) this._meltSurface = {
+      size, density: new Float32Array(size), red: new Float32Array(size),
+      green: new Float32Array(size), blue: new Float32Array(size),
+    };
+    const f = this._meltSurface;
+    f.density.fill(0); f.red.fill(0); f.green.fill(0); f.blue.fill(0);
+    const cos = Math.cos(cam.rotation), sin = Math.sin(cam.rotation);
+    let count = 0, x0 = width, x1 = 0, y0 = height, y1 = 0;
+    for (let i = 0; i < g.n; i++) {
+      if (g.melt[i] <= 0.4) continue;
+      const dx = g.x[i] - cam.x, dy = g.y[i] - cam.y;
+      const sx = width / 2 + (dx * cos - dy * sin) * cam.scale;
+      const sy = height / 2 + (dx * sin + dy * cos) * cam.scale;
+      const radius = Math.max(1.2, g.r[i] * cam.scale * 2), r2 = radius * radius;
+      const left = Math.max(0, Math.floor(sx - radius)), right = Math.min(width - 1, Math.ceil(sx + radius));
+      const top = Math.max(0, Math.floor(sy - radius)), bottom = Math.min(height - 1, Math.ceil(sy + radius));
+      if (left > right || top > bottom) continue;
+      count++; x0 = Math.min(x0, left); x1 = Math.max(x1, right); y0 = Math.min(y0, top); y1 = Math.max(y1, bottom);
+      const material = MATERIALS[matKey(g.mat[i])] || MATERIALS.silicate;
+      const glow = incandescence(g.temp[i]) || material.hot;
+      const emission = clamp((g.temp[i] - 700) / 5000, 0, 0.85);
+      const red = lerp(material.hot[0], glow[0], emission);
+      const green = lerp(material.hot[1], glow[1], emission);
+      const blue = lerp(material.hot[2], glow[2], emission);
+      for (let y = top; y <= bottom; y++) for (let x = left; x <= right; x++) {
+        const q = 1 - ((x + 0.5 - sx) ** 2 + (y + 0.5 - sy) ** 2) / r2;
+        if (q <= 0) continue;
+        const weight = q * q, k = y * width + x;
+        f.density[k] += weight; f.red[k] += weight * red;
+        f.green[k] += weight * green; f.blue[k] += weight * blue;
+      }
+    }
+    if (!count) return;
+    const pixels = ctx.getImageData(0, 0, width, height), data = pixels.data;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const k = y * width + x, density = f.density[k];
+      if (density < 0.3) continue;
+      const edge = Math.min(1, density / 0.8), shade = 0.76 + 0.24 * edge;
+      data[k * 4] = f.red[k] / density * shade;
+      data[k * 4 + 1] = f.green[k] / density * shade;
+      data[k * 4 + 2] = f.blue[k] / density * shade;
+      data[k * 4 + 3] = 255;
+    }
+    ctx.putImageData(pixels, 0, 0);
   }
 
   lightDirection(body, stars) {
