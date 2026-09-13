@@ -220,16 +220,43 @@ class App {
     this.ui.toast('Undone');
   }
 
-  saveScene() {
+  async saveScene() {
     const data = { ...this.world.toJSON(), helxis: 1, preset: this.currentPreset };
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const json = JSON.stringify(data);
+    const filename = `helxis-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.json`;
+    const n = this.world.bodies.length;
+
+    // Published in a viewer, a page cannot start its own download: the anchor
+    // below is inert there, so Save did nothing at all and then said it had
+    // saved. Hand the file to the host when there is one to hand it to, and
+    // keep the anchor for the times this file is opened directly.
+    const host = typeof window !== 'undefined' ? window.claude : null;
+    if (host && typeof host.use === 'function') {
+      let downloads = null;
+      try { downloads = await host.use('downloads'); } catch { downloads = null; }
+      if (downloads) {
+        try {
+          await downloads.save({ filename, data: json });
+          this.ui.toast(`Saved ${n} bodies`);
+        } catch (err) {
+          // Declining the prompt is an answer, not a failure.
+          const code = err && err.code;
+          this.ui.toast(code === 'declined' || code === 'rate_limited'
+            ? 'Save cancelled'
+            : `Could not save: ${(err && err.message) || err}`);
+        }
+        return;
+      }
+    }
+
+    const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `helxis-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '')}.json`;
+    a.download = filename;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    this.ui.toast(`Saved ${this.world.bodies.length} bodies`);
+    this.ui.toast(`Saved ${n} bodies`);
   }
 
   async loadSceneFile(file) {
