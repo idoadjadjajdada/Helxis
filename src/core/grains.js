@@ -2,7 +2,6 @@ import { MATERIALS, normalizeComposition } from './materials.js';
 import { G, clamp, T_CMB, SIGMA_SB } from './const.js';
 import { makeRng, hashSeed } from './rng.js';
 import { MATERIAL_KEYS, matIndex, matKey } from './cells.js';
-import { solveFluid } from './fluid.js';
 
 /**
  * Matter, as parcels, in world coordinates.
@@ -29,6 +28,57 @@ const MELT = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].melt));
 const CP = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].cp));
 const LATENT = new Float64Array(MATERIAL_KEYS.map((k) => MATERIALS[k].latent));
 const STRENGTH = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].strength));
+const SOUND = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].sound || 2000));
+
+/**
+ * The 2D cubic-spline SPH kernel, and its derivative.
+ *
+ * Support is 2h. Everything below uses h = 2r, which on the hex lattice the
+ * parcels are seeded on reaches the six nearest neighbours and the six behind
+ * them — enough neighbours for a density estimate that is not mostly noise.
+ */
+function kernelW(d, h) {
+  const q = d / h;
+  if (q >= 2) return 0;
+  const sigma = 10 / (7 * Math.PI * h * h);
+  if (q < 1) return sigma * (1 - 1.5 * q * q + 0.75 * q * q * q);
+  const t = 2 - q;
+  return sigma * 0.25 * t * t * t;
+}
+
+/** dW/dd. Negative everywhere inside the support, as a kernel's slope must be. */
+function kernelDW(d, h) {
+  const q = d / h;
+  if (q >= 2 || q === 0) return 0;
+  const sigma = 10 / (7 * Math.PI * h * h);
+  if (q < 1) return (sigma / h) * (-3 * q + 2.25 * q * q);
+  const t = 2 - q;
+  return (sigma / h) * (-0.75 * t * t);
+}
+
+/**
+ * What the kernel reads on a perfect hex lattice, per unit (mass / spacing^2).
+ *
+ * Rest density has to be the density the seeding actually produces, or every
+ * body starts under pressure and immediately explodes or collapses. Rather
+ * than trust an analytic areal density to agree with a discrete kernel sum,
+ * measure the sum once on an ideal lattice and scale it per parcel.
+ */
+const LATTICE_RHO = (() => {
+  // Spacing 2, so parcel radius 1 and h = 2 — the same ratios addBody uses.
+  const s = 2, h = 2;
+  const dy = s * Math.sqrt(3) / 2;
+  let sum = 0;
+  for (let row = -3; row <= 3; row++) {
+    const oy = row * dy;
+    const ox = (row & 1) ? s * 0.5 : 0;
+    for (let col = -3; col <= 3; col++) {
+      const x = col * s + ox;
+      sum += kernelW(Math.hypot(x, oy), h);
+    }
+  }
+  return sum; // units of mass per r^2, for m = 1, r = 1
+})();
 
 /**
  * How hard parcels hold on to each other, relative to the material's bulk
@@ -40,6 +90,7 @@ const STRENGTH = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].strength
  * own weight and a hypervelocity impact takes it apart.
  */
 const COHESION_SCALE = 4e-9;
+
 
 export class GrainSystem {
   constructor(opts = {}) {
@@ -55,6 +106,7 @@ export class GrainSystem {
     this.temp = new Float64Array(c);
     this.melt = new Float64Array(c);
     this.cluster = new Int32Array(c);
+    this.rho0 = new Float64Array(c);
     this.n = 0;
 
     // Uniform hash grid for contacts. Parcels in one event are all much the
@@ -79,6 +131,10 @@ export class GrainSystem {
     this.temp[i] = temperature; this.r[i] = radius;
     this.melt[i] = meltOf(matIdx, temperature);
     this.cluster[i] = -1;
+    // The density this parcel reads when its neighbourhood is undisturbed.
+    // Pressure is measured against this, so a body that has just been seeded
+    // is at rest rather than under a pressure it has to relax out of.
+    this.rho0[i] = (LATTICE_RHO * m) / (radius * radius);
     return i;
   }
 
@@ -249,12 +305,24 @@ export class GrainSystem {
     // is stable at whatever step the rest of the simulation wants to take. A
     // spring's stable step goes as sqrt(m/k), which for rock is microseconds,
     // and no sandbox is going to run at microseconds.
+    this.buildGrid();
+    // Pressure carries the melt, and it does it as a force with a potential
+    // rather than as a correction to position.
+    //
+    // A projection moves mass without paying for the move. Under sustained
+    // gravity that is unpaid work every step: gravity pulls a parcel in, the
+    // damping books the speed it gained as heat, and the projection puts it
+    // back where it started for free. Potential energy came out flat, kinetic
+    // came out flat, and thermal climbed forever — the giant impact reached
+    // 300,000 K on a collision whose entire kinetic energy is worth 4,100 K,
+    // and that invented heat was the energy that should have thrown a disc.
+    // Held up by an equation of state instead, the same body sits still.
+    this.pressure(dt, opts);
     const passes = opts.passes || 4;
     for (let pass = 0; pass < passes; pass++) {
       this.buildGrid();
       this.contacts(dt / passes, opts);
     }
-    solveFluid(this, dt, opts);
     this.buildGrid();
 
     // --- thermal ------------------------------------------------------------
@@ -568,6 +636,144 @@ export class GrainSystem {
     }
   }
 
+  /**
+   * Pressure, for the matter that is molten.
+   *
+   * The contact solver is a granular one: parcels only push on each other once
+   * they actually overlap, and the push is a hard positional correction. That
+   * is right for rubble and wrong for a magma ocean, and it is why melt looked
+   * like wet sand instead of liquid — a liquid resists being compressed
+   * smoothly and everywhere, not abruptly at the point of contact.
+   *
+   * So the melt gets a real equation of state. Weakly-compressible SPH with a
+   * Tait EOS, at the material's liquid sound speed, blended in by melt
+   * fraction so that solid parcels are still governed by contacts and molten
+   * ones by pressure. The force is central and symmetric, which is what lets a
+   * blob relax into a sphere, a disc stay a disc, and both do it without
+   * leaking momentum of either kind.
+   */
+  pressure(dt, opts) {
+    const n = this.n;
+    const g = this._grid;
+    if (!g || n === 0 || !(dt > 0)) return;
+    const scale = opts.pressure != null ? opts.pressure : 1;
+    if (scale <= 0) return;
+
+    if (!this._rho || this._rho.length < this.cap) {
+      this._rho = new Float64Array(this.cap);
+      this._prs = new Float64Array(this.cap);
+      this._pax = new Float64Array(this.cap);
+      this._pay = new Float64Array(this.cap);
+    }
+    const rho = this._rho, prs = this._prs, pax = this._pax, pay = this._pay;
+    rho.fill(0, 0, n); pax.fill(0, 0, n); pay.fill(0, 0, n);
+
+    const { minX, minY, cols, rows, size } = g;
+    // The grid is sized for contact, whose reach is one parcel diameter. The
+    // kernel reaches twice that, so this pass walks five cells instead of
+    // three rather than paying for a second grid.
+    const SPAN = 2;
+
+    // --- density ------------------------------------------------------------
+    let anyMelt = false;
+    for (let i = 0; i < n; i++) {
+      rho[i] = this.mass[i] * kernelW(0, 2 * this.r[i]);
+      if (this.melt[i] >= 0.15) anyMelt = true;
+    }
+    if (!anyMelt) return;
+    for (let i = 0; i < n; i++) {
+      const ci = clamp(Math.floor((this.x[i] - minX) / size), 0, cols - 1);
+      const cj = clamp(Math.floor((this.y[i] - minY) / size), 0, rows - 1);
+      for (let oy = -SPAN; oy <= SPAN; oy++) {
+        for (let ox = -SPAN; ox <= SPAN; ox++) {
+          const gx = ci + ox, gy = cj + oy;
+          if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+          for (let j = this._heads[gy * cols + gx]; j !== -1; j = this._next[j]) {
+            if (j <= i) continue;
+            // Only melt carries pressure, so a pair with no melt in it has no
+            // density worth estimating. Solid neighbours of molten parcels do
+            // still count: they are the wall the liquid presses against.
+            if (this.melt[i] < 0.15 && this.melt[j] < 0.15) continue;
+            const dx = this.x[j] - this.x[i], dy = this.y[j] - this.y[i];
+            const h = this.r[i] + this.r[j];
+            const d2 = dx * dx + dy * dy;
+            if (d2 >= 4 * h * h) continue;
+            const w = kernelW(Math.sqrt(d2), h);
+            if (w <= 0) continue;
+            rho[i] += this.mass[j] * w;
+            rho[j] += this.mass[i] * w;
+          }
+        }
+      }
+    }
+
+    // --- equation of state ---------------------------------------------------
+    // Tait, as used for weakly-compressible liquids: stiff enough that the
+    // density barely moves, soft enough to integrate at a step a sandbox can
+    // afford. Never negative — a free surface has fewer neighbours and so
+    // reads as underdense, and letting that pull inward would make every
+    // surface parcel dive for the middle.
+    for (let i = 0; i < n; i++) {
+      const soft = this.melt[i];
+      if (soft < 0.15 || rho[i] <= 0) { prs[i] = 0; continue; }
+      const c = SOUND[this.mat[i]];
+      const ratio = rho[i] / this.rho0[i];
+      if (ratio <= 1) { prs[i] = 0; continue; }
+      const B = (this.rho0[i] * c * c) / 7;
+      prs[i] = B * (ratio ** 7 - 1) * scale;
+    }
+
+    // --- force ----------------------------------------------------------------
+    for (let i = 0; i < n; i++) {
+      if (prs[i] === 0 && this.melt[i] < 0.15) continue;
+      const ci = clamp(Math.floor((this.x[i] - minX) / size), 0, cols - 1);
+      const cj = clamp(Math.floor((this.y[i] - minY) / size), 0, rows - 1);
+      for (let oy = -SPAN; oy <= SPAN; oy++) {
+        for (let ox = -SPAN; ox <= SPAN; ox++) {
+          const gx = ci + ox, gy = cj + oy;
+          if (gx < 0 || gy < 0 || gx >= cols || gy >= rows) continue;
+          for (let j = this._heads[gy * cols + gx]; j !== -1; j = this._next[j]) {
+            if (j <= i) continue;
+            if (prs[i] === 0 && prs[j] === 0) continue;
+            const dx = this.x[j] - this.x[i], dy = this.y[j] - this.y[i];
+            const h = this.r[i] + this.r[j];
+            const d2 = dx * dx + dy * dy;
+            if (d2 >= 4 * h * h || d2 === 0) continue;
+            const d = Math.sqrt(d2);
+            const grad = -kernelDW(d, h);   // positive, pointing i away from j
+            if (grad <= 0) continue;
+            const term = prs[i] / (rho[i] * rho[i]) + prs[j] / (rho[j] * rho[j]);
+            const f = term * grad;
+            const nx = dx / d, ny = dy / d;
+            pax[i] -= this.mass[j] * f * nx; pay[i] -= this.mass[j] * f * ny;
+            pax[j] += this.mass[i] * f * nx; pay[j] += this.mass[i] * f * ny;
+          }
+        }
+      }
+    }
+
+    for (let i = 0; i < n; i++) {
+      if (pax[i] === 0 && pay[i] === 0) continue;
+      this.vx[i] += pax[i] * dt;
+      this.vy[i] += pay[i] * dt;
+    }
+  }
+
+  /**
+   * The step the pressure wave sets: sound cannot be allowed to cross a
+   * smoothing length in one step, or the EOS goes unstable and the body
+   * detonates. Only molten parcels carry pressure, so only they are counted.
+   */
+  soundStep() {
+    let worst = Infinity;
+    for (let i = 0; i < this.n; i++) {
+      if (this.melt[i] < 0.15) continue;
+      const c = SOUND[this.mat[i]];
+      if (c > 0) worst = Math.min(worst, (0.4 * 2 * this.r[i]) / c);
+    }
+    return isFinite(worst) ? worst : Infinity;
+  }
+
   /** Central shock smoothing: conserve both momenta; dissipate into heat. */
   viscosity(opts, dt = 1) {
     const n = this.n;
@@ -611,11 +817,23 @@ export class GrainSystem {
             const distance = Math.sqrt(d2), nx = dx / distance, ny = dy / distance;
             const mi = this.mass[i], mj = this.mass[j];
             const vn = (this.vx[j] - this.vx[i]) * nx + (this.vy[j] - this.vy[i]) * ny;
-            if (vn >= 0) continue;
-            // A central artificial viscosity for unresolved compression.
-            // Rigid rotation has vn=0. Unlike XSPH averaging, this preserves
-            // angular momentum and vanishes as strain or elapsed time vanish.
-            const k = -Math.expm1(-strength * w * soft * dens * (-vn) * dt / rr);
+            if (vn === 0) continue;
+            // A central artificial viscosity. Rigid rotation has vn=0, so this
+            // preserves angular momentum where XSPH averaging destroyed it,
+            // and it vanishes as strain or elapsed time vanish.
+            //
+            // Compression and expansion both, because a liquid's bulk
+            // viscosity resists either. Compression-only is the shock-capturing
+            // convention, and it left a molten body ringing forever: the
+            // equation of state made it breathe, nothing damped the outward
+            // half of the breath, and a clump that never stops moving relative
+            // to itself never satisfies the test for having finished being a
+            // collision. It stayed parcels for good. Expansion is damped at a
+            // fifth of compression, and the density weighting keeps it inside
+            // bodies — ejecta thrown clear has too few neighbours to feel it,
+            // which is what stops a debris disc being sucked back in.
+            const bulk = vn < 0 ? 1 : 0.2;
+            const k = -Math.expm1(-strength * w * soft * dens * bulk * Math.abs(vn) * dt / rr);
             const reduced = mi * mj / (mi + mj), impulse = -vn * reduced * k;
             this.vx[i] -= impulse * nx / mi; this.vy[i] -= impulse * ny / mi;
             this.vx[j] += impulse * nx / mj; this.vy[j] += impulse * ny / mj;

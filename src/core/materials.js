@@ -11,35 +11,39 @@
 // albedo  : bond albedo, drives equilibrium temperature
 // strength: shear strength, Pa — only matters for bodies too small for gravity
 //           to dominate their binding energy
+// sound   : speed of sound in the LIQUID state, m/s. Only the melt is treated
+//           as a fluid, so this is the liquid value and not the solid one:
+//           molten silicate carries sound at about 2.6 km/s where the solid
+//           rock it froze from carries it at 7.
 // cold/hot: surface palette endpoints (solid, molten)
 
 export const MATERIALS = {
-  iron:      { name: 'Iron',      rho: 7874, melt: 1811, boil: 3134, cp: 449,  latent: 2.47e5, vapour: 6.09e6, albedo: 0.18, strength: 1.0e8, cold: [104, 96, 102],  hot: [255, 150, 60] },
-  nickel:    { name: 'Nickel',    rho: 8908, melt: 1728, boil: 3186, cp: 445,  latent: 2.98e5, vapour: 6.48e6, albedo: 0.20, strength: 1.1e8, cold: [128, 124, 118], hot: [255, 164, 70] },
-  silicate:  { name: 'Silicate',  rho: 3300, melt: 1473, boil: 3200, cp: 1000, latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.14, strength: 3.0e7, cold: [122, 106, 90],  hot: [255, 108, 32] },
-  basalt:    { name: 'Basalt',    rho: 2900, melt: 1450, boil: 3100, cp: 840,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.09, strength: 2.5e7, cold: [70, 66, 68],    hot: [255, 96, 28] },
-  hematite:  { name: 'Hematite',  rho: 5250, melt: 1838, boil: 3400, cp: 650,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.12, strength: 4.0e7, cold: [152, 78, 52],   hot: [255, 118, 44] },
-  olivine:   { name: 'Olivine',   rho: 3320, melt: 2163, boil: 3400, cp: 815,  latent: 6.0e5,  vapour: 6.0e6,  albedo: 0.16, strength: 4.5e7, cold: [98, 112, 78],   hot: [255, 130, 50] },
-  feldspar:  { name: 'Feldspar',  rho: 2620, melt: 1473, boil: 3100, cp: 730,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.40, strength: 3.0e7, cold: [198, 190, 176], hot: [255, 150, 72] },
-  tholin:    { name: 'Tholin',    rho: 1400, melt: 550,  boil: 900,  cp: 1200, latent: 1.0e5,  vapour: 1.5e6,  albedo: 0.10, strength: 5.0e6, cold: [170, 104, 68],  hot: [230, 150, 80] },
-  granite:   { name: 'Granite',   rho: 2700, melt: 1533, boil: 3100, cp: 790,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.30, strength: 3.5e7, cold: [168, 146, 128], hot: [255, 128, 48] },
-  regolith:  { name: 'Regolith',  rho: 1500, melt: 1400, boil: 3000, cp: 840,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.11, strength: 1.0e5, cold: [136, 128, 118], hot: [220, 120, 52] },
-  carbon:    { name: 'Carbon',    rho: 2200, melt: 3800, boil: 4300, cp: 710,  latent: 1.0e5,  vapour: 5.9e7,  albedo: 0.04, strength: 2.0e7, cold: [44, 42, 46],    hot: [200, 90, 40] },
-  water:     { name: 'Water',     rho: 1000, melt: 273,  boil: 373,  cp: 4184, latent: 3.34e5, vapour: 2.26e6, albedo: 0.06, strength: 0,     cold: [48, 96, 152],   hot: [96, 168, 208] },
-  ice:       { name: 'Water ice', rho: 917,  melt: 273,  boil: 373,  cp: 2050, latent: 3.34e5, vapour: 2.83e6, albedo: 0.60, strength: 1.0e6, cold: [206, 226, 240], hot: [140, 190, 220] },
-  ammonia:   { name: 'Ammonia',   rho: 817,  melt: 195,  boil: 240,  cp: 4700, latent: 3.32e5, vapour: 1.37e6, albedo: 0.50, strength: 5.0e5, cold: [214, 200, 170], hot: [196, 176, 150] },
+  iron:      { name: 'Iron',      rho: 7874, melt: 1811, boil: 3134, cp: 449,  latent: 2.47e5, vapour: 6.09e6, albedo: 0.18, strength: 1.0e8, sound: 4000, cold: [104, 96, 102],  hot: [255, 150, 60] },
+  nickel:    { name: 'Nickel',    rho: 8908, melt: 1728, boil: 3186, cp: 445,  latent: 2.98e5, vapour: 6.48e6, albedo: 0.20, strength: 1.1e8, sound: 4000, cold: [128, 124, 118], hot: [255, 164, 70] },
+  silicate:  { name: 'Silicate',  rho: 3300, melt: 1473, boil: 3200, cp: 1000, latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.14, strength: 3.0e7, sound: 2600, cold: [122, 106, 90],  hot: [255, 108, 32] },
+  basalt:    { name: 'Basalt',    rho: 2900, melt: 1450, boil: 3100, cp: 840,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.09, strength: 2.5e7, sound: 2600, cold: [70, 66, 68],    hot: [255, 96, 28] },
+  hematite:  { name: 'Hematite',  rho: 5250, melt: 1838, boil: 3400, cp: 650,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.12, strength: 4.0e7, sound: 3000, cold: [152, 78, 52],   hot: [255, 118, 44] },
+  olivine:   { name: 'Olivine',   rho: 3320, melt: 2163, boil: 3400, cp: 815,  latent: 6.0e5,  vapour: 6.0e6,  albedo: 0.16, strength: 4.5e7, sound: 2700, cold: [98, 112, 78],   hot: [255, 130, 50] },
+  feldspar:  { name: 'Feldspar',  rho: 2620, melt: 1473, boil: 3100, cp: 730,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.40, strength: 3.0e7, sound: 2500, cold: [198, 190, 176], hot: [255, 150, 72] },
+  tholin:    { name: 'Tholin',    rho: 1400, melt: 550,  boil: 900,  cp: 1200, latent: 1.0e5,  vapour: 1.5e6,  albedo: 0.10, strength: 5.0e6, sound: 1500, cold: [170, 104, 68],  hot: [230, 150, 80] },
+  granite:   { name: 'Granite',   rho: 2700, melt: 1533, boil: 3100, cp: 790,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.30, strength: 3.5e7, sound: 2500, cold: [168, 146, 128], hot: [255, 128, 48] },
+  regolith:  { name: 'Regolith',  rho: 1500, melt: 1400, boil: 3000, cp: 840,  latent: 4.0e5,  vapour: 6.0e6,  albedo: 0.11, strength: 1.0e5, sound: 1200, cold: [136, 128, 118], hot: [220, 120, 52] },
+  carbon:    { name: 'Carbon',    rho: 2200, melt: 3800, boil: 4300, cp: 710,  latent: 1.0e5,  vapour: 5.9e7,  albedo: 0.04, strength: 2.0e7, sound: 3000, cold: [44, 42, 46],    hot: [200, 90, 40] },
+  water:     { name: 'Water',     rho: 1000, melt: 273,  boil: 373,  cp: 4184, latent: 3.34e5, vapour: 2.26e6, albedo: 0.06, strength: 0, sound: 1500,     cold: [48, 96, 152],   hot: [96, 168, 208] },
+  ice:       { name: 'Water ice', rho: 917,  melt: 273,  boil: 373,  cp: 2050, latent: 3.34e5, vapour: 2.83e6, albedo: 0.60, strength: 1.0e6, sound: 1500, cold: [206, 226, 240], hot: [140, 190, 220] },
+  ammonia:   { name: 'Ammonia',   rho: 817,  melt: 195,  boil: 240,  cp: 4700, latent: 3.32e5, vapour: 1.37e6, albedo: 0.50, strength: 5.0e5, sound: 1700, cold: [214, 200, 170], hot: [196, 176, 150] },
   // Methane absorbs red light, which is the whole reason Uranus and Neptune
   // are blue; the tabulated colour has to be the colour it *makes*, not the
   // colour of the condensate.
-  methane:   { name: 'Methane',   rho: 656,  melt: 91,   boil: 112,  cp: 2200, latent: 5.87e4, vapour: 5.1e5,  albedo: 0.30, strength: 2.0e5, cold: [58, 124, 198],  hot: [96, 158, 214] },
-  nitrogen:  { name: 'Nitrogen',  rho: 1026, melt: 63,   boil: 77,   cp: 2040, latent: 2.57e4, vapour: 1.99e5, albedo: 0.70, strength: 1.0e5, cold: [224, 224, 232], hot: [190, 200, 220] },
-  co2:       { name: 'CO₂ ice',   rho: 1562, melt: 195,  boil: 195,  cp: 850,  latent: 1.96e5, vapour: 5.7e5,  albedo: 0.60, strength: 3.0e5, cold: [232, 228, 216], hot: [200, 196, 190] },
-  sulfur:    { name: 'Sulfur',    rho: 2070, melt: 388,  boil: 718,  cp: 700,  latent: 5.4e4,  vapour: 1.4e6,  albedo: 0.55, strength: 5.0e6, cold: [224, 196, 92],  hot: [255, 210, 110] },
-  hydrogen:  { name: 'Hydrogen',  rho: 88,   melt: 14,   boil: 20,   cp: 14300, latent: 5.86e4, vapour: 4.52e5, albedo: 0.35, strength: 0,    cold: [216, 202, 176], hot: [255, 228, 190] },
-  helium:    { name: 'Helium',    rho: 125,  melt: 1,    boil: 4,    cp: 5193, latent: 2.1e4,  vapour: 2.09e4, albedo: 0.35, strength: 0,     cold: [232, 220, 196], hot: [255, 240, 212] },
-  plasma:    { name: 'Plasma',    rho: 1408, melt: 0,    boil: 0,    cp: 20000, latent: 0,     vapour: 0,      albedo: 0.00, strength: 0,     cold: [255, 214, 120], hot: [255, 250, 226] },
-  degenerate:{ name: 'Degenerate matter', rho: 1e9, melt: 1e9, boil: 1e9, cp: 500, latent: 0,  vapour: 0,      albedo: 0.00, strength: 1e20,  cold: [210, 226, 255], hot: [255, 255, 255] },
-  neutronium:{ name: 'Neutronium', rho: 4e17, melt: 1e12, boil: 1e12, cp: 100, latent: 0,      vapour: 0,      albedo: 0.00, strength: 1e30,  cold: [232, 240, 255], hot: [255, 255, 255] },
+  methane:   { name: 'Methane',   rho: 656,  melt: 91,   boil: 112,  cp: 2200, latent: 5.87e4, vapour: 5.1e5,  albedo: 0.30, strength: 2.0e5, sound: 1400, cold: [58, 124, 198],  hot: [96, 158, 214] },
+  nitrogen:  { name: 'Nitrogen',  rho: 1026, melt: 63,   boil: 77,   cp: 2040, latent: 2.57e4, vapour: 1.99e5, albedo: 0.70, strength: 1.0e5, sound: 900, cold: [224, 224, 232], hot: [190, 200, 220] },
+  co2:       { name: 'CO₂ ice',   rho: 1562, melt: 195,  boil: 195,  cp: 850,  latent: 1.96e5, vapour: 5.7e5,  albedo: 0.60, strength: 3.0e5, sound: 1000, cold: [232, 228, 216], hot: [200, 196, 190] },
+  sulfur:    { name: 'Sulfur',    rho: 2070, melt: 388,  boil: 718,  cp: 700,  latent: 5.4e4,  vapour: 1.4e6,  albedo: 0.55, strength: 5.0e6, sound: 1200, cold: [224, 196, 92],  hot: [255, 210, 110] },
+  hydrogen:  { name: 'Hydrogen',  rho: 88,   melt: 14,   boil: 20,   cp: 14300, latent: 5.86e4, vapour: 4.52e5, albedo: 0.35, strength: 0, sound: 1100,    cold: [216, 202, 176], hot: [255, 228, 190] },
+  helium:    { name: 'Helium',    rho: 125,  melt: 1,    boil: 4,    cp: 5193, latent: 2.1e4,  vapour: 2.09e4, albedo: 0.35, strength: 0, sound: 180,     cold: [232, 220, 196], hot: [255, 240, 212] },
+  plasma:    { name: 'Plasma',    rho: 1408, melt: 0,    boil: 0,    cp: 20000, latent: 0,     vapour: 0,      albedo: 0.00, strength: 0, sound: 10000,     cold: [255, 214, 120], hot: [255, 250, 226] },
+  degenerate:{ name: 'Degenerate matter', rho: 1e9, melt: 1e9, boil: 1e9, cp: 500, latent: 0,  vapour: 0,      albedo: 0.00, strength: 1e20, sound: 1e+06,  cold: [210, 226, 255], hot: [255, 255, 255] },
+  neutronium:{ name: 'Neutronium', rho: 4e17, melt: 1e12, boil: 1e12, cp: 100, latent: 0,      vapour: 0,      albedo: 0.00, strength: 1e30, sound: 1e+07,  cold: [232, 240, 255], hot: [255, 255, 255] },
 };
 
 export const MATERIAL_KEYS = Object.keys(MATERIALS);
