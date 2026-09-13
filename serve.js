@@ -2,16 +2,15 @@
 // A static server for Helxis.
 //
 // ES modules will not load over file://, so the sandbox needs a server even
-// though it has no backend. This one serves the repository root so that
-// http://localhost:4173/helxis/ matches where the app sits in the tree; the
-// app itself is self-contained, and nothing in helxis/ reaches outside it.
+// though it has no backend. This one serves the repository root, which is also
+// the app root. There is no backend and nothing to configure.
 
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
 import { extname, join, normalize, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)));
 const PORT = Number(process.env.PORT) || 4173;
 
 const TYPES = {
@@ -29,7 +28,7 @@ const TYPES = {
 const server = createServer(async (req, res) => {
   try {
     let path = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-    if (path === '/') path = '/helxis/index.html';
+    if (path === '/') path = '/index.html';
     if (path.endsWith('/')) path += 'index.html';
 
     // Resolve inside the root, so a path full of "../" cannot escape it.
@@ -57,5 +56,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Helxis → http://localhost:${PORT}/helxis/`);
+  console.log(`Helxis → http://localhost:${PORT}/`);
 });

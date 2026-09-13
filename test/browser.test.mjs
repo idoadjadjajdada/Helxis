@@ -9,14 +9,14 @@
 //
 // Needs a server and a browser:
 //
-//   node helxis/serve.js &
-//   node helxis/test/browser.test.mjs
+//   node serve.js &
+//   node test/browser.test.mjs
 //
 // PLAYWRIGHT and CHROMIUM env vars override the module and executable paths.
 
 import { createRequire } from 'node:module';
 
-const ORIGIN = process.env.HELXIS_ORIGIN || 'http://localhost:4173/helxis/';
+const ORIGIN = process.env.HELXIS_ORIGIN || 'http://localhost:4173/';
 const require_ = createRequire(import.meta.url);
 let chromium;
 try {
@@ -121,8 +121,8 @@ await step('collapse to black hole', async () => {
   });
   await p.evaluate(async () => {
     const h = window.helxis;
-    const { instantiate } = await import('/helxis/src/ui/catalog.js');
-    const { CATALOG_BY_ID } = await import('/helxis/src/ui/catalog.js');
+    const { instantiate } = await import('/src/ui/catalog.js');
+    const { CATALOG_BY_ID } = await import('/src/ui/catalog.js');
     const s = instantiate(CATALOG_BY_ID.get('sun'), { massScale: 4 });
     h.world.add(s); h.select(s);
     h.camera.x = 0; h.camera.y = 0; h.camera.setZoom(h.camera.height / 4e9); h.camera.scale = h.camera.targetScale;
@@ -182,7 +182,7 @@ await step('settings drive the world', async () => {
 
 await step('every preset loads', async () => {
   return await p.evaluate(async () => {
-    const { PRESETS } = await import('/helxis/src/ui/presets.js');
+    const { PRESETS } = await import('/src/ui/presets.js');
     const h = window.helxis;
     const out = [];
     for (const pr of PRESETS) { h.loadPreset(pr.id, { silent: true }); out.push(h.world.bodies.length); }
@@ -232,8 +232,8 @@ await step('field tools are driven by wall-clock time, not simulated time', asyn
 // the real canvas path the page uses.
 await step('a merged planet renders differently from an unmerged one', async () => {
   return await p.evaluate(async () => {
-    const tex = await import('/helxis/src/render/texture.js');
-    const { Body } = await import('/helxis/src/core/body.js');
+    const tex = await import('/src/render/texture.js');
+    const { Body } = await import('/src/core/body.js');
     const shot = (mixes, seed) => {
       const bd = new Body({
         name: 'X', mass: 5.97e24, composition: { iron: 0.32, silicate: 0.68 },

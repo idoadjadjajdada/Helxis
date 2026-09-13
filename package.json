@@ -1,0 +1,14 @@
+{
+  "name": "helxis",
+  "version": "0.1.0",
+  "private": false,
+  "description": "A 2D N-body space sandbox where collisions are matter hitting matter.",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node serve.js",
+    "test": "node test/physics.test.mjs",
+    "test:browser": "node test/browser.test.mjs"
+  }
+}

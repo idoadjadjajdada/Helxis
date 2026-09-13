@@ -4,11 +4,11 @@ An N-body physics sandbox. Real gravity, real collisions, and pixel worlds that
 melt, mix and come apart according to what actually hit them.
 
 ```
-npm run helxis     # then open http://localhost:4173/helxis/
+npm start          # then open http://localhost:4173/
 ```
 
 No build step. It is vanilla ES modules and one canvas; the server exists only
-because modules will not load over `file://`. Nothing in `helxis/` reaches
+because modules will not load over `file://`. Nothing in the app reaches
 outside it — copy the folder anywhere and serve it and you have the whole
 sandbox, fonts included.
 
@@ -315,9 +315,9 @@ Node — the tests do.
 ## Tests
 
 ```
-node helxis/test/physics.test.mjs     # 219 assertions, no dependencies
-node helxis/serve.js &                # the browser suite needs a server
-node helxis/test/browser.test.mjs     # 15 more, needs playwright
+node test/physics.test.mjs     # 280 assertions, no dependencies
+node serve.js &                # the browser suite needs a server
+node test/browser.test.mjs     # 16 more, needs playwright
 ```
 
 `physics.test.mjs` checks the simulation against quantities measured or derived
