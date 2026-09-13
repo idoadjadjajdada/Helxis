@@ -205,10 +205,32 @@ export class GrainSystem {
     // it at the contact cadence was two thirds of the entire cost. Held for a
     // few substeps it is the same field to well within what anything here can
     // notice.
+    // How stale the field is allowed to get is set by how far the parcels have
+    // actually moved since it was computed, not by a step count. A held field
+    // points at where everything used to be, and a force that does not point
+    // along the current line of centres exerts a torque on the pair it acts
+    // between. Every other term here conserves angular momentum identically;
+    // this one did not, and at a fixed cadence of four it handed a body 3% more
+    // angular momentum every thousand steps — at sixteen, 15%. A giant impact
+    // ran long enough to accumulate seven times what it started with and tore
+    // itself apart instead of settling into a planet and a disc.
+    //
+    // Tied to displacement instead, a settled body still skips most of the
+    // work while an impact recomputes nearly every step, which is exactly
+    // where the error would otherwise compound.
     const every = opts.gravityEvery || 4;
+    let rMin = Infinity, vMax = 0;
+    for (let i = 0; i < n; i++) {
+      if (this.r[i] < rMin) rMin = this.r[i];
+      const v2 = this.vx[i] * this.vx[i] + this.vy[i] * this.vy[i];
+      if (v2 > vMax) vMax = v2;
+    }
+    this._gravDrift = (this._gravDrift || 0) + Math.sqrt(vMax) * dt;
     this._sinceGravity = (this._sinceGravity || 0) + 1;
-    if (this._sinceGravity >= every || !this._ax || this._gravN !== n) {
+    const stale = this._gravDrift > (opts.gravitySlack || 0.06) * rMin;
+    if (stale || this._sinceGravity >= every || !this._ax || this._gravN !== n) {
       this._sinceGravity = 0;
+      this._gravDrift = 0;
       this._gravN = n;
       this.gravity(softening);
       if (opts.external) opts.external(this);
