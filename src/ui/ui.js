@@ -450,7 +450,15 @@ export class UI {
     s.classList.toggle('paused', app.paused);
     s.classList.toggle('throttled', !app.paused && app.world.throttled);
     $('status-state').textContent = app.paused ? 'PAUSED' : app.world.throttled ? 'TIME LIMITED' : 'SIMULATING';
-    $('status-bodies').textContent = `${app.world.bodies.length} ${app.world.bodies.length === 1 ? 'body' : 'bodies'}`;
+    const parcels = app.world.grains?.n || 0;
+    const bodies = `${app.world.bodies.length} ${app.world.bodies.length === 1 ? 'body' : 'bodies'}`;
+    $('status-bodies').textContent = parcels ? `${bodies} · ${parcels} parcels` : bodies;
+    const rate = Math.max(0, app.world.achievedRate || 0);
+    $('status-state').title = app.paused ? 'Simulation paused'
+      : `Actual speed: ${rate.toPrecision(3)} simulated seconds per real second`;
+    if (!app.paused && app.world.throttled) {
+      $('status-state').textContent = `TIME LIMITED · ${rate < 60 ? rate.toFixed(1) + '×' : rate < 3600 ? (rate / 60).toFixed(1) + ' min/s' : (rate / 3600).toFixed(1) + ' hr/s'}`;
+    }
     $('status-fps').textContent = `${Math.round(app.fps)} FPS`;
 
     const showDiag = app.settings.showDiagnostics;

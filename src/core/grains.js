@@ -2,6 +2,7 @@ import { MATERIALS, normalizeComposition } from './materials.js';
 import { G, clamp, T_CMB, SIGMA_SB } from './const.js';
 import { makeRng, hashSeed } from './rng.js';
 import { MATERIAL_KEYS, matIndex, matKey } from './cells.js';
+import { solveFluid } from './fluid.js';
 
 /**
  * Matter, as parcels, in world coordinates.
@@ -26,6 +27,7 @@ import { MATERIAL_KEYS, matIndex, matKey } from './cells.js';
 const RHO = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].rho));
 const MELT = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].melt));
 const CP = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].cp));
+const LATENT = new Float64Array(MATERIAL_KEYS.map((k) => MATERIALS[k].latent));
 const STRENGTH = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].strength));
 
 /**
@@ -50,8 +52,8 @@ export class GrainSystem {
     this.mass = new Float64Array(c);
     this.r = new Float64Array(c);
     this.mat = new Uint8Array(c);
-    this.temp = new Float32Array(c);
-    this.melt = new Float32Array(c);
+    this.temp = new Float64Array(c);
+    this.melt = new Float64Array(c);
     this.cluster = new Int32Array(c);
     this.n = 0;
 
@@ -62,6 +64,8 @@ export class GrainSystem {
     this._next = new Int32Array(c);
     this._parent = new Int32Array(c);   // union-find, for clustering
     this._seen = new Int32Array(c);
+    this._gridOccupied = new Int32Array(c);
+    this._gridOccupiedCount = 0;
   }
 
   clear() { this.n = 0; }
@@ -116,13 +120,8 @@ export class GrainSystem {
     const rp = spacing * 0.5;
     const rows = Math.ceil((2 * R) / (spacing * 0.8660254)) + 1;
 
-    const core = normalizeComposition(body.coreComposition || body.composition);
-    const shell = normalizeComposition(body.surfaceComposition || body.composition);
+    const composition = normalizeComposition(body.composition);
     const rng = makeRng(hashSeed(body.seed, 'grains'));
-    const coreFrac = clamp(body.differentiation * 0.42, 0, 0.62);
-    const rCore = Math.sqrt(clamp(coreFrac, 0, 0.8));
-    const corePick = picker(core, rng);
-    const shellPick = picker(shell, rng);
 
     const cosR = Math.cos(body.rotation), sinR = Math.sin(body.rotation);
     const placed = [];
@@ -137,25 +136,49 @@ export class GrainSystem {
     }
     if (!placed.length) return 0;
 
-    const each = body.mass / placed.length;
-    let added = 0;
-    for (const [lx, ly, frac] of placed) {
-      const m = frac < rCore ? corePick() : shellPick();
-      // Rotate into world space, and carry the body's spin as a real velocity
-      // so a spinning body shatters into parcels that are still spinning.
-      const wx = body.x + lx * cosR - ly * sinR;
-      const wy = body.y + lx * sinR + ly * cosR;
-      const rx = wx - body.x, ry = wy - body.y;
-      const t = body.temperature + (1 - frac) * (1 - frac) * Math.max(0, body.temperature * 0.3 + 200);
-      const i = this.add(
-        wx, wy,
-        body.vx - body.spin * ry, body.vy + body.spin * rx,
-        each, m, t, rp,
-      );
-      if (i < 0) break;
-      added++;
+    // Assign an exact mass inventory before placing anything. Random draws
+    // from separately normalised core/shell mixtures changed bulk iron by
+    // tens of percent, and could erase trace components entirely.
+    if (placed.length > wanted) placed.length = wanted;
+    const entries = Object.entries(composition).filter(([key, fraction]) => MATERIALS[key] && fraction > 0);
+    if (entries.length > placed.length) return 0;
+    const counts = entries.map(() => 1);
+    for (let left = placed.length - entries.length; left > 0; left--) {
+      let best = 0, deficit = -Infinity;
+      for (let k = 0; k < entries.length; k++) {
+        const d = entries[k][1] * placed.length - counts[k];
+        if (d > deficit) { deficit = d; best = k; }
+      }
+      counts[best]++;
     }
-    return added;
+    // Sort dense phases inward, with seed-based mixing at partial
+    // differentiation. Sorting changes position, never the mass inventory.
+    const inventory = [];
+    for (let k = 0; k < entries.length; k++) {
+      const [key, fraction] = entries[k];
+      for (let j = 0; j < counts[k]; j++) inventory.push({
+        mat: matIndex(key), mass: body.mass * fraction / counts[k],
+        score: body.differentiation * Math.log(MATERIALS[key].rho)
+          + (1 - body.differentiation) * rng() * 12,
+      });
+    }
+    inventory.sort((a, b) => b.score - a.score);
+    placed.sort((a, b) => a[2] - b[2]);
+    let cx = 0, cy = 0;
+    for (let k = 0; k < placed.length; k++) {
+      cx += placed[k][0] * inventory[k].mass / body.mass;
+      cy += placed[k][1] * inventory[k].mass / body.mass;
+    }
+    const start = this.n;
+    for (let k = 0; k < placed.length; k++) {
+      const lx = placed[k][0] - cx, ly = placed[k][1] - cy;
+      const rx = lx * cosR - ly * sinR, ry = lx * sinR + ly * cosR;
+      const item = inventory[k];
+      this.add(body.x + rx, body.y + ry,
+        body.vx - body.spin * ry, body.vy + body.spin * rx,
+        item.mass, item.mat, body.temperature, rp);
+    }
+    return this.n - start;
   }
 
   // --- the step -------------------------------------------------------------
@@ -204,9 +227,13 @@ export class GrainSystem {
     // is stable at whatever step the rest of the simulation wants to take. A
     // spring's stable step goes as sqrt(m/k), which for rock is microseconds,
     // and no sandbox is going to run at microseconds.
-    this.buildGrid();
     const passes = opts.passes || 4;
-    for (let pass = 0; pass < passes; pass++) this.contacts(dt / passes, opts);
+    for (let pass = 0; pass < passes; pass++) {
+      this.buildGrid();
+      this.contacts(dt / passes, opts);
+    }
+    solveFluid(this, dt, opts);
+    this.buildGrid();
 
     // --- thermal ------------------------------------------------------------
     // Before viscosity, because viscosity needs the neighbour counts it takes.
@@ -357,7 +384,7 @@ export class GrainSystem {
         if (this.x[i] > mxX) mxX = this.x[i];
         if (this.y[i] > mxY) mxY = this.y[i];
       }
-      size = Math.max(rMax * 2.2, 1e-9);
+      size = Math.max(rMax * 2.6, 1e-9);
       cols = clamp(Math.ceil((mxX - mnX) / size) + 1, 1, 512);
       rows = clamp(Math.ceil((mxY - mnY) / size) + 1, 1, 512);
       minX = mnX; minY = mnY;
@@ -365,10 +392,12 @@ export class GrainSystem {
     const cells = cols * rows;
     if (!this._heads || this._heads.length < cells) this._heads = new Int32Array(cells);
     this._heads.fill(-1, 0, cells);
+    this._gridOccupiedCount = 0;
     for (let i = 0; i < n; i++) {
       const ci = clamp(Math.floor((this.x[i] - minX) / size), 0, cols - 1);
       const cj = clamp(Math.floor((this.y[i] - minY) / size), 0, rows - 1);
       const c = cj * cols + ci;
+      if (this._heads[c] === -1) this._gridOccupied[this._gridOccupiedCount++] = c;
       this._next[i] = this._heads[c];
       this._heads[c] = i;
     }
@@ -393,18 +422,19 @@ export class GrainSystem {
     if (!heat || heat.length < this.cap) heat = this._heat = new Float64Array(this.cap);
     heat.fill(0, 0, this.n);
 
-    for (let cj = 0; cj < rows; cj++) {
-      for (let ci = 0; ci < cols; ci++) {
-        for (let i = this._heads[cj * cols + ci]; i !== -1; i = this._next[i]) {
-          for (let oy = 0; oy <= 1; oy++) {
-            for (let ox = (oy === 0 ? 0 : -1); ox <= 1; ox++) {
-              const nx = ci + ox, ny = cj + oy;
-              if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-              let j = this._heads[ny * cols + nx];
-              if (oy === 0 && ox === 0) j = this._next[i];
-              for (; j !== -1; j = this._next[j]) {
-                this.pair(i, j, restitutionSolid, heat, dt);
-              }
+    // Ejecta can span hundreds of empty grid cells. Visit occupied buckets
+    // only; the neighbour stencil still enumerates each candidate pair once.
+    for (let q = 0; q < this._gridOccupiedCount; q++) {
+      const cell = this._gridOccupied[q], ci = cell % cols, cj = Math.floor(cell / cols);
+      for (let i = this._heads[cj * cols + ci]; i !== -1; i = this._next[i]) {
+        for (let oy = 0; oy <= 1; oy++) {
+          for (let ox = (oy === 0 ? 0 : -1); ox <= 1; ox++) {
+            const nx = ci + ox, ny = cj + oy;
+            if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+            let j = this._heads[ny * cols + nx];
+            if (oy === 0 && ox === 0) j = this._next[i];
+            for (; j !== -1; j = this._next[j]) {
+              this.pair(i, j, restitutionSolid, heat, dt);
             }
           }
         }
@@ -414,9 +444,7 @@ export class GrainSystem {
     // Spend the collision losses as heat.
     for (let i = 0; i < this.n; i++) {
       if (heat[i] === 0) continue;
-      const cp = CP[this.mat[i]] || 1000;
-      this.temp[i] += heat[i] / Math.max(this.mass[i] * cp, 1e-9);
-      this.melt[i] = meltOf(this.mat[i], this.temp[i]);
+      this.addHeat(i, heat[i]);
     }
   }
 
@@ -447,7 +475,10 @@ export class GrainSystem {
       // 745 km and cook itself to 739 K — but never so much in one pass that
       // undoing a deep interpenetration becomes a launch. The cap is a quarter
       // of a parcel per pass; four passes clear the rest.
-      const raw = overlap * (soft > 0.5 ? 0.3 : 0.85);
+      // Melt is supported by the density solve. Keep only a small collision
+      // core to prevent coincident parcels; a full solid diameter jams shear.
+      const liquid = Math.min(this.melt[i], this.melt[j]);
+      const raw = Math.max(0, rsum * (1 - 0.6 * liquid) - d) * 0.85;
       const push = Math.min(raw, Math.min(this.r[i], this.r[j]) * 0.25);
       this.x[i] -= nx * push * (mj * inv);
       this.y[i] -= ny * push * (mj * inv);
@@ -455,7 +486,7 @@ export class GrainSystem {
       this.y[j] += ny * push * (mi * inv);
     }
 
-    if (vn < 0) {
+    if (vn < 0 && overlap > 0) {
       // Approaching: an inelastic impulse, and the energy it removes becomes
       // heat in both parcels. This is the only place impact heating comes from,
       // and it is the same arithmetic whether it is two grains settling or a
@@ -591,7 +622,23 @@ export class GrainSystem {
     }
   }
 
-  /** Radiate from the outside, conduct inside, and melt or freeze. */
+  /** Specific enthalpy, including fusion across the material's melt interval. */
+  enthalpy(i) {
+    return CP[this.mat[i]] * this.temp[i] + LATENT[this.mat[i]] * this.melt[i];
+  }
+
+  addHeat(i, joules) {
+    const mat = this.mat[i], cp = CP[mat], latent = LATENT[mat];
+    const tm = MELT[mat] || 1500, solidus = tm * 0.86, width = tm * 0.28;
+    const h = Math.max(cp * T_CMB + latent * meltOf(mat, T_CMB),
+      this.enthalpy(i) + joules / this.mass[i]);
+    const hs = cp * solidus, hl = cp * (solidus + width) + latent;
+    this.temp[i] = h <= hs ? h / cp : h >= hl ? (h - latent) / cp
+      : solidus + (h - hs) / (cp + latent / width);
+    this.melt[i] = meltOf(mat, this.temp[i]);
+  }
+
+  /** Radiate from exposed parcels and melt or freeze. No conduction yet. */
   thermal(dt, opts) {
     const eq = opts.equilibriumT || T_CMB;
     const n = this.n;
@@ -628,10 +675,10 @@ export class GrainSystem {
       if (exposed > 0.01) {
         const area = 2 * Math.PI * this.r[i] * this.r[i];
         const t = this.temp[i];
-        const cp = CP[this.mat[i]] || 1000;
         const loss = SIGMA_SB * area * exposed * (t * t * t * t - eq * eq * eq * eq) * dt;
-        const drop = loss / Math.max(this.mass[i] * cp, 1e-9);
-        this.temp[i] = Math.max(eq, t - clamp(drop, 0, Math.max(t - eq, 0) * 0.5));
+        const floorH = CP[this.mat[i]] * eq + LATENT[this.mat[i]] * meltOf(this.mat[i], eq);
+        const available = Math.max(0, (this.enthalpy(i) - floorH) * this.mass[i]);
+        this.addHeat(i, -clamp(loss, 0, available * 0.5));
       }
       this.melt[i] = meltOf(this.mat[i], this.temp[i]);
     }
@@ -731,23 +778,6 @@ export class GrainSystem {
 function meltOf(matIdx, t) {
   const tm = MELT[matIdx] || 1500;
   return clamp((t - tm * 0.86) / (tm * 0.28), 0, 1);
-}
-
-function picker(comp, rng) {
-  const keys = [], cum = [];
-  let acc = 0;
-  for (const key in comp) {
-    if (!(comp[key] > 0) || !MATERIALS[key]) continue;
-    acc += comp[key];
-    keys.push(matIndex(key));
-    cum.push(acc);
-  }
-  if (!keys.length) return () => matIndex('silicate');
-  return () => {
-    const v = rng() * acc;
-    for (let i = 0; i < keys.length; i++) if (v <= cum[i]) return keys[i];
-    return keys[keys.length - 1];
-  };
 }
 
 export { RHO, MELT, CP, STRENGTH };

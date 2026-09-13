@@ -71,6 +71,11 @@ export class World {
   emit(evt, payload) { for (const fn of this.listeners[evt] || []) fn(payload); }
 
   clear() {
+    if (this.grains) this.grains.clear();
+    this.grainsActive = false;
+    this._grainDebt = 0;
+    this._grainAge = 0;
+    this._sinceCluster = 0;
     // Mark them dead first: anything still holding a reference — the grab tool,
     // the camera's follow target — otherwise sees a live-looking orphan that is
     // no longer in the world.
@@ -1001,7 +1006,7 @@ export class World {
           const d = Math.sqrt(d2);
           if (d <= 0) continue;
           const f = d < reach
-            ? (G * o.mass * d) / (reach * reach * reach)
+            ? (G * o.mass) / (reach * reach * reach)
             : (G * o.mass) / (d2 * d);
           ax += f * dx; ay += f * dy;
         }
@@ -1156,9 +1161,9 @@ export class World {
       best.s.vx = (best.s.vx * best.s.mass + e.s.vx * e.s.mass) / m;
       best.s.vy = (best.s.vy * best.s.mass + e.s.vy * e.s.mass) / m;
       best.s.temperature = (best.s.temperature * best.s.mass + e.s.temperature * e.s.mass) / m;
-      for (const key in e.s.composition) {
-        const add = e.s.composition[key] * e.s.mass;
-        best.s.composition[key] = ((best.s.composition[key] || 0) * best.s.mass + add) / m;
+      for (const key of new Set([...Object.keys(best.s.composition), ...Object.keys(e.s.composition)])) {
+        best.s.composition[key] = ((best.s.composition[key] || 0) * best.s.mass
+          + (e.s.composition[key] || 0) * e.s.mass) / m;
       }
       best.s.mass = m;
     }

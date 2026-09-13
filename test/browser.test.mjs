@@ -59,6 +59,7 @@ await step('arm+place', async () => {
   await p.mouse.click(1000, 300);
   await p.waitForTimeout(200);
   const after = await p.evaluate(() => window.helxis.world.bodies.length);
+  if (!armed || after !== before + 1) return { fail: `armed=${armed}, bodies ${before}→${after}` };
   return `armed=${armed} bodies ${before}→${after}`;
 });
 
@@ -89,6 +90,7 @@ await step('laser', async () => {
   await p.waitForTimeout(1100);
   await p.mouse.up();
   const t1 = await p.evaluate(() => window.helxis.state.selected.temperature);
+  if (!(t1 > t0)) return { fail: `laser did not heat Earth: ${t0}→${t1}` };
   return `Earth ${t0.toFixed(0)} K → ${t1.toFixed(0)} K`;
 });
 
@@ -147,13 +149,14 @@ await step('delete tool', async () => {
   await p.evaluate(() => { const h=window.helxis; h.loadPreset('jupiter-system'); h.frameAll(); });
   await p.waitForTimeout(400);
   const before = await p.evaluate(() => window.helxis.world.bodies.length);
-  await p.keyboard.press('8');
+  await p.keyboard.press('0');
   await p.evaluate(() => { const h=window.helxis; const m=h.world.bodies[1]; const q=[0,0]; h.camera.project(m.x,m.y,q); window.__t = h.renderer.toScreen(q[0],q[1]); });
   const t = await p.evaluate(() => window.__t);
   const box = await p.locator('#stage').boundingBox();
   await p.mouse.click(box.x + t.x, box.y + t.y);
   await p.waitForTimeout(200);
   const after = await p.evaluate(() => window.helxis.world.bodies.length);
+  if (after !== before - 1) return { fail: `delete left ${after} bodies; expected ${before - 1}` };
   return `bodies ${before}→${after}`;
 });
 
@@ -166,6 +169,7 @@ await step('save/load round-trip', async () => {
     const e0 = h.world.totalEnergy();
     h.world.restore(json);
     const e1 = h.world.totalEnergy();
+    if (h.world.bodies.length !== n0 || Math.abs((e1-e0)/e0) >= 1e-12) return { fail: 'snapshot changed body count or energy' };
     return `${n0} bodies, energy match ${Math.abs((e1-e0)/e0) < 1e-12}`;
   });
 });
@@ -176,6 +180,7 @@ await step('settings drive the world', async () => {
   const on = await p.evaluate(() => window.helxis.world.settings.relativity);
   await p.click('[data-toggle="relativity"]');
   const off = await p.evaluate(() => window.helxis.world.settings.relativity);
+  if (on !== true || off !== false) return { fail: `relativity ${on}→${off}` };
   await p.click('#settings-close');
   return `relativity ${on} → ${off}`;
 });
@@ -346,5 +351,14 @@ await step('a selected body is readable on a small phone', async () => {
 console.log(log.join('\n'));
 if (errs.length) { failed += errs.length; console.log('\nERRORS:\n' + errs.join('\n')); }
 console.log(`\n${passed} passed, ${failed} failed`);
+if (process.env.HELXIS_SCREENSHOT && failed === 0) {
+  await p.evaluate(() => {
+    const h = window.helxis;
+    h.loadPreset('giant-impact');
+    if (h.paused) h.togglePause();
+  });
+  await p.waitForTimeout(8000);
+  await p.screenshot({ path: process.env.HELXIS_SCREENSHOT });
+}
 await b.close();
 process.exit(failed ? 1 : 0);

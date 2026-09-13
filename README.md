@@ -128,11 +128,44 @@ what is left is re-derived from the real mass limits — so a neutron-star merge
 that crosses the TOV limit collapses to a black hole rather than remaining a
 very heavy neutron star.
 
+**Parcel collisions** resolve qualifying large impacts as moving material rather
+than analytic remnants. Molten parcels now resist compression through a 2D
+area-density constraint based on [Macklin and Müller (2013)](https://mmacklin.com/pbf_sig_preprint.pdf).
+The implementation uses four iterations, a poly6 kernel spanning two parcel
+diameters, and a rest density calibrated on the initial hexagonal packing.
+Cold neighbours act as moving boundaries. Pressure is clamped to zero at a
+free surface, so the solver does not pull detached ejecta back into a body.
+
+This is a hybrid approximation: bounded density corrections change positions,
+while central, inelastic impulses oppose compression without increasing kinetic
+energy. Their dissipated energy becomes heat. Directly adding correction/dt to
+velocity was rejected because packing error could turn into an energetic
+explosion as the collision timestep shrank. Each iteration limits a parcel's
+aggregate correction to 0.2 of its radius, locally, without slowing unrelated
+clumps. Four iterations do not guarantee incompressibility during severe impacts.
+
+Fusion energy is included as `cp*T + latent*melt`, with a linear melt interval
+from 0.86 to 1.14 times the tabulated melting point. Heating and cooling invert
+that enthalpy consistently. This melt interval is an approximation, not a
+material-specific phase diagram; there is no vapour EOS or thermal conduction.
+
+Seeding preserves each bulk material's mass, including trace components, and
+does not invent an interior temperature gradient. The lattice is recentered by
+mass before carrying the body's translation and spin into the parcels. These
+bulk round trips are tested. Spatial field history and different-temperature
+mixtures remain lossy at condensation; angular momentum across the conversion
+is not guaranteed because body and parcel moments of inertia differ.
+
+The analytic/parcel gate and forced-condensation fallback remain. External
+body-to-parcel gravity has the correct finite interior coefficient, but lacks
+the reciprocal force on bodies. These limitations mean the current model must
+not be described as a validated predictor of lunar debris mass.
+
 **Relativity** is optional: the first post-Newtonian Schwarzschild term, off by
 default. Turn it on and Mercury's perihelion advances 43.07″ per century against
 the 42.98″ general relativity predicts, with a numerical floor of 0.06″.
 
-**Thermal evolution** runs on absorbed starlight against Stefan-Boltzmann
+**Body thermal evolution** runs on absorbed starlight against Stefan-Boltzmann
 cooling, with latent heat spent on melting before the temperature moves again.
 Bodies settle at their equilibrium temperature without that number being written
 down anywhere — an Earth-mass rock at 1 AU reaches 267 K, which is what its own
@@ -146,12 +179,11 @@ which is how you get a ring.
 
 ### Things that fall out rather than being scripted
 
-Load **Giant impact** and let it run. A Mars-sized body hits the proto-Earth at
-4 km/s with an impact parameter of 0.7, the two merge, and about 1.9 lunar
-masses are thrown into a circumplanetary disc. Because that disc is drawn from
-the two *mantles* and not from whole bodies, it comes out at 1.3% iron against
-the planet's 31.8% — which is the lunar iron depletion that the giant-impact
-hypothesis was invented to explain. Nothing in the code knows about the Moon.
+Load **Giant impact** to watch deformation, heating, material mixing and
+escaping debris. The parcel route follows the resolved material; the analytic
+route uses scaling laws and a prescribed fragment distribution. Their debris
+masses have not been shown to converge to one another or to a published impact
+calculation. The analytic regression tests alone do not establish that result.
 
 Load **Figure-eight choreography** for three equal masses on the
 Chenciner-Montgomery orbit. After a full period each returns to its start within
@@ -238,7 +270,7 @@ click; nothing in `core/` imports it.
 |---|---|
 | `Space` | play / pause |
 | `,` `.` | slower / faster, `Shift+.` steps one frame |
-| `1`–`8` | select, laser, attract, repel, explode, collapse, grab, delete |
+| `1`–`9`, `0` | select, laser, attract, repel, explode, collapse, grab, heat, cool, delete |
 | Scroll | zoom about the cursor |
 | Drag | pan (or middle-drag with any tool) |
 | `Q` `E` | rotate the view |

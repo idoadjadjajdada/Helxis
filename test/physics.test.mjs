@@ -5,7 +5,7 @@
 // against quantities that were measured or derived somewhere else. If a change
 // breaks one of them, the physics has changed, whatever the code looks like.
 //
-//   node helxis/test/physics.test.mjs
+//   node test/physics.test.mjs
 
 import {
   G, C, AU, YEAR, DAY, M_SUN, M_EARTH, M_MOON, R_EARTH,
