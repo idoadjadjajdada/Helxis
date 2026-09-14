@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node serve.js",
     "test": "node test/physics.test.mjs",
-    "test:browser": "node test/browser.test.mjs"
+    "test:browser": "node test/browser.test.mjs",
+    "build:artifact": "node scripts/build-artifact.mjs"
   }
 }
