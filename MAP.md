@@ -623,7 +623,7 @@ Regenerate after moving code; `--check` fails if it is stale.
 744 fn formatYield
 ```
 
-## src/ui/ui.js  (765 lines)
+## src/ui/ui.js  (711 lines)
 
 ```
 9 const TOOL_ICONS
@@ -631,48 +631,46 @@ Regenerate after moving code; `--check` fails if it is stale.
 40 const $
 42 class UI
 54 · UI.build
-68 — construction
-70 · UI.buildTransport
-83 · UI.updateSpeed
-93 · UI.toggleSpeedPop
-100 · UI.buildPresetSelect
-106 · UI.buildTools
-116 · UI.buildChips
-122 · UI.buildPresetList
-132 · UI.buildSettings
-142 · UI.settingRow
-161 · UI.buildHelp
-189 — binding
-191 · UI.bind
-378 — catalogue
-380 · UI.setTab
-387 · UI.renderObjectList
-422 · UI.paintThumbs
-437 · UI.arm
-447 · UI.disarm
-454 — inspector
-456 · UI.updateInspector
-521 — status, radar, toasts
-523 · UI.updateStatus
-595 · UI.drawRadar
-648 — settings
-650 · UI.syncSettings
-669 · UI.toggleSettings
-682 · UI.toggleHelp
-687 — toasts
-689 · UI.toast
-705 — formatting helpers
-707 fn escapeHtml
-713 fn kindLabel
-721 fn fmtTemp
-727 fn fmtG
-732 fn fmtPeriod
-737 fn formatClock
-752 fn formatZoom
-760 fn formatScale
+67 — construction
+70 · UI.updateSpeed
+79 · UI.buildPresetSelect
+85 · UI.buildTools
+95 · UI.buildChips
+101 · UI.buildPresetList
+111 · UI.buildSettings
+121 · UI.settingRow
+140 · UI.buildHelp
+168 — binding
+170 · UI.bind
+325 — catalogue
+327 · UI.setTab
+334 · UI.renderObjectList
+369 · UI.paintThumbs
+384 · UI.arm
+394 · UI.disarm
+401 — inspector
+403 · UI.updateInspector
+468 — status, radar, toasts
+470 · UI.updateStatus
+541 · UI.drawRadar
+594 — settings
+596 · UI.syncSettings
+615 · UI.toggleSettings
+628 · UI.toggleHelp
+633 — toasts
+635 · UI.toast
+651 — formatting helpers
+653 fn escapeHtml
+659 fn kindLabel
+667 fn fmtTemp
+673 fn fmtG
+678 fn fmtPeriod
+683 fn formatClock
+698 fn formatZoom
+706 fn formatScale
 ```
 
-## test/browser.test.mjs  (416 lines)
+## test/browser.test.mjs  (425 lines)
 
 ```
 19 const ORIGIN

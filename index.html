@@ -38,19 +38,16 @@
     <svg viewBox="0 0 16 16" width="14" height="14"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>
   </button>
 
+  <!-- The clock, as a slider that is simply there.
+       It was a button that opened a popover, and it was reported twice as not
+       showing a slider on a machine I cannot reach, while every test I could
+       write said it opened. A control that has to be discovered and then has
+       to successfully open has two ways to fail; one that is already on screen
+       has none. -->
   <div class="speed-wrap">
-    <button id="time-scale" class="select compact" aria-haspopup="dialog" aria-expanded="false"
-            aria-label="Time scale" title="Set the clock — click for a slider">1 day/s</button>
-    <div class="speed-pop panel" id="speed-pop" role="dialog" aria-label="Time scale" hidden>
-      <div class="speed-head">
-        <span class="eyebrow">Clock</span>
-        <output id="speed-readout">1.00 d/s</output>
-      </div>
-      <input type="range" id="speed-slider" min="-1" max="13.5" step="0.01" value="4.94"
-             aria-label="Simulated seconds per second, logarithmic">
-      <div class="speed-ticks" id="speed-ticks"></div>
-      <div class="speed-note" id="speed-note"></div>
-    </div>
+    <input type="range" id="speed-slider" min="-1" max="13.5" step="0.01" value="4.94"
+           title="Drag to set the clock" aria-label="Simulated seconds per second, logarithmic">
+    <output id="time-scale" class="speed-readout" aria-live="off">1 day/s</output>
   </div>
 
   <button class="icon-btn" id="time-step" title="Step forward one frame" aria-label="Step forward">

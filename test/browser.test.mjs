@@ -343,41 +343,45 @@ await step('a selected body is readable on a small phone', async () => {
   return bad.length ? { fail: bad.join('; ') } : worst.join(' ');
 });
 
-// The clock opens its slider on a real click.
+// The clock slider is on screen and usable without anything being opened.
 //
-// This is here because it was reported as broken on a deployed site and was
-// not reproducible from the console: `helxis.ui.toggleSpeedPop()` worked, the
-// markup was present, the stylesheet was present, and the deployed bytes were
-// identical to the repo. The gap was that nothing drove it the way a person
-// does. Anything that a user reaches by pointing at it has to be tested by
-// pointing at it.
-await step('clock opens a slider on a real click', async () => {
-  const before = await p.evaluate(() => document.getElementById('speed-pop').hidden);
-  await p.click('#time-scale');
-  await p.waitForTimeout(150);
+// This is here because "the speed doesn't show a slider" was reported twice on
+// a deployed build while every test said the popover it used to live in opened
+// on a real click. Rather than keep testing the thing I could not reproduce,
+// the control stopped being one that has to be opened — so what is tested is
+// that it is simply there, which is a claim that cannot pass while a user is
+// looking at a bar with no slider in it.
+await step('the clock slider is visible without opening anything', async () => {
   const r = await p.evaluate(() => {
-    const pop = document.getElementById('speed-pop');
     const sl = document.getElementById('speed-slider');
+    if (!sl) return { fail: 'no #speed-slider in the document' };
     const box = sl.getBoundingClientRect();
-    const cs = getComputedStyle(pop);
+    const cs = getComputedStyle(sl);
     return {
-      hidden: pop.hidden,
-      display: cs.display,
+      type: sl.type,
       visible: !!sl.getClientRects().length,
-      width: Math.round(box.width),
+      display: cs.display, visibility: cs.visibility, opacity: cs.opacity,
+      w: Math.round(box.width), h: Math.round(box.height),
       onScreen: box.x >= 0 && box.right <= innerWidth && box.y >= 0 && box.bottom <= innerHeight,
-      expanded: document.getElementById('time-scale').getAttribute('aria-expanded'),
+      readout: (document.getElementById('time-scale') || {}).textContent,
+      // nothing left over from the popover it replaced
+      leftovers: ['speed-pop', 'speed-ticks', 'speed-note', 'speed-readout']
+        .filter((id) => document.getElementById(id)),
     };
   });
-  if (before !== true) return { fail: 'popover was already open before the click' };
-  if (r.hidden) return { fail: 'clicking the clock did not open the popover' };
-  if (!r.visible || r.width < 60) return { fail: `slider not usable (width ${r.width})` };
-  if (!r.onScreen) return { fail: 'slider opened off screen' };
-  if (r.expanded !== 'true') return { fail: `aria-expanded is ${r.expanded}` };
-  return `opened, slider ${r.width}px, aria-expanded=${r.expanded}`;
+  if (r.fail) return r;
+  if (r.type !== 'range') return { fail: `#speed-slider is a ${r.type}, not a range` };
+  if (!r.visible || r.display === 'none' || r.visibility === 'hidden' || r.opacity === '0') {
+    return { fail: `slider present but not visible (${r.display}/${r.visibility}/${r.opacity})` };
+  }
+  if (r.w < 60 || r.h < 4) return { fail: `slider too small to use: ${r.w}x${r.h}` };
+  if (!r.onScreen) return { fail: 'slider is off screen' };
+  if (r.leftovers.length) return { fail: `dead popover elements remain: ${r.leftovers}` };
+  return `${r.w}x${r.h} on screen, reading "${r.readout}"`;
 });
 
-// And dragging it actually moves the clock, to a value off the old ladder.
+// Dragging it moves the clock, to values the old fourteen-step ladder had no
+// rung for.
 await step('the slider sets the clock continuously', async () => {
   const v = await p.evaluate(() => {
     const sl = document.getElementById('speed-slider');
@@ -395,17 +399,22 @@ await step('the slider sets the clock continuously', async () => {
   return `${v.label} (${v.speed.toExponential(3)} s/s)`;
 });
 
-// Clicking away closes it; clicking inside does not.
-await step('the clock popover closes on an outside click only', async () => {
-  await p.click('#speed-slider');
+// And a real drag on the real element, since every failure so far has been in
+// the gap between dispatching an event and actually pointing at the thing.
+await step('a real drag on the slider changes the clock', async () => {
+  const before = await p.evaluate(() => window.helxis.timeScale);
+  const box = await p.locator('#speed-slider').boundingBox();
+  if (!box) return { fail: 'slider has no box to drag' };
+  await p.mouse.move(box.x + box.width * 0.2, box.y + box.height / 2);
+  await p.mouse.down();
+  await p.mouse.move(box.x + box.width * 0.8, box.y + box.height / 2, { steps: 8 });
+  await p.mouse.up();
   await p.waitForTimeout(120);
-  const stillOpen = await p.evaluate(() => !document.getElementById('speed-pop').hidden);
-  await p.mouse.click(900, 700);
-  await p.waitForTimeout(150);
-  const closed = await p.evaluate(() => document.getElementById('speed-pop').hidden);
-  if (!stillOpen) return { fail: 'clicking inside the popover closed it' };
-  if (!closed) return { fail: 'clicking the canvas left it open' };
-  return 'stays open inside, closes outside';
+  const after = await p.evaluate(() => window.helxis.timeScale);
+  if (!(after > before)) {
+    return { fail: `dragging right did not raise the clock (${before} → ${after})` };
+  }
+  return `${before.toExponential(2)} → ${after.toExponential(2)} s/s by dragging`;
 });
 
 console.log(log.join('\n'));

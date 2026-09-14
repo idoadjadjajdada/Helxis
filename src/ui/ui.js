@@ -52,7 +52,6 @@ export class UI {
   }
 
   build() {
-    this.buildTransport();
     this.buildPresetSelect();
     this.buildTools();
     this.buildChips();
@@ -67,34 +66,14 @@ export class UI {
 
   // --- construction ---------------------------------------------------------
 
-  buildTransport() {
-    // Round numbers as tick buttons under the slider: the ladder is still what
-    // anyone wants most of the time, it just is not the only place the clock
-    // can stand any more.
-    const ticks = ['1× realtime', '1 hour/s', '1 day/s', '1 year/s', '1 kyr/s', '1 Myr/s'];
-    $('speed-ticks').innerHTML = ticks.map((label) => {
-      const i = TIME_SCALES.findIndex((s) => s.label === label);
-      const short = label.replace('1× realtime', '1×').replace('1 ', '').replace('/s', '');
-      return `<button type="button" data-index="${i}" title="${label}">${short}</button>`;
-    }).join('');
-  }
-
   /** Slider position is log10 of the rate, so a decade is a fixed distance. */
   updateSpeed(app) {
-    if (!document.getElementById('speed-slider')) return;
-    const v = app.speedValue;
-    $('time-scale').textContent = formatRate(v);
-    $('speed-readout').textContent = formatRate(v);
-    const slider = $('speed-slider');
-    const pos = Math.log10(Math.max(v, 1e-12)).toFixed(2);
+    const slider = document.getElementById('speed-slider');
+    if (!slider) return;
+    $('time-scale').textContent = formatRate(app.speedValue);
+    const pos = Math.log10(Math.max(app.speedValue, 1e-12)).toFixed(2);
+    // Only when it differs, so setting it from here does not fight a drag.
     if (slider.value !== pos) slider.value = pos;
-  }
-
-  toggleSpeedPop(force) {
-    const pop = $('speed-pop');
-    const open = force === undefined ? pop.hidden : force;
-    pop.hidden = !open;
-    $('time-scale').setAttribute('aria-expanded', String(open));
   }
 
   buildPresetSelect() {
@@ -196,50 +175,18 @@ export class UI {
     $('time-faster').addEventListener('click', () => app.nudgeSpeed(1));
     $('time-step').addEventListener('click', () => app.stepFrame());
     $('time-reset').addEventListener('click', () => app.restart());
-    /* Opening the clock, robustly.
+    /* The clock is a slider in the bar, so there is nothing to open.
      *
-     * This hung on `click` alone and on stopPropagation to keep the
-     * close-on-outside handler from undoing it in the same tick. That works,
-     * but it is one ordering assumption away from a control that silently
-     * does nothing, and a control that silently does nothing is
-     * indistinguishable from a broken build — which is exactly how it was
-     * reported.
-     *
-     * So: open on pointerdown, which fires before anything can swallow a
-     * click; decide "outside" by asking where the event actually happened
-     * rather than by relying on propagation being stopped; and let the
-     * keyboard reach it, since a button that only answers a mouse is not
-     * finished.
+     * It was a dropdown, then a button that opened a popover. The popover was
+     * reported twice as showing no slider on a machine I could not reach,
+     * while every test I could write said it opened on a real click. Rather
+     * than keep debugging a thing I cannot see, the control that had to be
+     * found and then had to successfully open is now a control that is simply
+     * on screen. `input` covers dragging, arrow keys and clicking the track,
+     * in every browser, with no handler of mine in the path.
      */
-    const speedBtn = $('time-scale');
-    const openSpeed = (e) => {
-      e.preventDefault();          // no focus-then-click double toggle
-      e.stopPropagation();
-      this.toggleSpeedPop();
-    };
-    speedBtn.addEventListener('pointerdown', openSpeed);
-    speedBtn.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') openSpeed(e);
-    });
-
     $('speed-slider').addEventListener('input', (e) => {
       app.setSpeed(Math.pow(10, Number(e.target.value)));
-    });
-    $('speed-ticks').addEventListener('click', (e) => {
-      const b = e.target.closest('button[data-index]');
-      if (b) app.setSpeedIndex(Number(b.dataset.index));
-    });
-
-    // Anywhere genuinely outside puts it away, and "outside" is a containment
-    // test rather than an assumption about which listener ran first.
-    document.addEventListener('pointerdown', (e) => {
-      const pop = $('speed-pop');
-      if (pop.hidden) return;
-      if (pop.contains(e.target) || speedBtn.contains(e.target)) return;
-      this.toggleSpeedPop(false);
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') this.toggleSpeedPop(false);
     });
 
     $('preset-select').addEventListener('change', (e) => {
@@ -530,20 +477,19 @@ export class UI {
 
     // Say what the clock is actually delivering. A collision holds it down on
     // purpose, and with nothing saying so the speed control just looked broken.
-    const note = $('speed-note');
-    if (note) {
+    // The readout goes amber while the clock is delivering less than it was
+    // asked for, so the slider and the status line agree with each other.
+    const readout = $('time-scale');
+    if (readout) {
+      const limited = !app.paused && app.world.throttled;
+      readout.classList.toggle('limited', limited);
       const parcels = app.world.grains ? app.world.grains.n : 0;
-      if (!app.paused && app.world.throttled && parcels > 0) {
-        note.className = 'speed-note limited';
-        note.textContent = `Holding at collision speed — ${parcels} parcels in flight. `
-          + `Raise the physics budget in Settings to push through faster.`;
-      } else if (!app.paused && app.world.throttled) {
-        note.className = 'speed-note limited';
-        note.textContent = 'Time limited: the scene needs more substeps than the frame budget allows.';
-      } else {
-        note.className = 'speed-note';
-        note.textContent = '';
-      }
+      readout.title = limited
+        ? (parcels > 0
+          ? `Holding at collision speed — ${parcels} parcels in flight. `
+            + 'Raise the collision time budget in Settings to push through faster.'
+          : 'Time limited: the scene needs more substeps than the frame budget allows.')
+        : 'Drag to set the clock';
     }
 
     const showDiag = app.settings.showDiagnostics;
