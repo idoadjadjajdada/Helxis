@@ -140,7 +140,6 @@ export const PRESETS = [
       const saturn = world.bodies.find((b) => b.name === 'Saturn');
       if (saturn) {
         const rng = makeRng(0x5a7c);
-        addSaturnMoons(world, saturn, rng);
         // The rings cost more than they look. A ring particle orbits Saturn in
         // about ten hours; Mercury, the fastest thing here until now, takes
         // eighty-eight days. The step chooser is global, so the whole solar
@@ -150,8 +149,13 @@ export const PRESETS = [
         // headroom — the preset asks for a week a second and this delivers
         // it — but you can no longer wind the clock to years a second, so it
         // is a switch rather than a decision made for you.
-        if (world.settings && world.settings.planetaryRings === false) return;
-        addSaturnRings(world, saturn, rng, 90);
+        // An `if`, not an early return: returning here skipped Ceres, Pluto
+        // and Halley, which are added below, and quietly built a nine-body
+        // solar system whenever the switch was off.
+        if (!world.settings || world.settings.planetaryRings !== false) {
+          addSaturnMoons(world, saturn, rng);
+          addSaturnRings(world, saturn, rng, 90);
+        }
       }
       orbit(world, sun, 'ceres', { a: 2.7658 * AU, e: 0.0785, argP: deg(73.6), M: deg(95.99) });
       orbit(world, sun, 'pluto', { a: 39.482 * AU, e: 0.2488, argP: deg(224.07), M: deg(14.86) });

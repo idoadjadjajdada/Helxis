@@ -63,7 +63,7 @@ export const SETTING_GROUPS = [
       { id: 'bounce', label: 'Allow bouncing', type: 'toggle', value: true, world: true, depends: 'collisions', note: 'Small strong bodies rebound instead of sticking.' },
       { id: 'maxFragments', label: 'Fragment cap', type: 'range', min: 4, max: 120, step: 4, value: 48, world: true, format: (v) => `${v}`, depends: 'collisions' },
       { id: 'tidalDisruption', label: 'Tidal disruption', type: 'toggle', value: true, world: true, note: 'Bodies shred inside the Roche limit.' },
-      { id: 'planetaryRings', label: 'Rings in multi-planet systems', type: 'toggle', value: true, world: true, note: 'Saturn\u2019s rings are real particles, and one orbits in ten hours against Mercury\u2019s eighty-eight days \u2014 so the whole system integrates about 190\u00d7 slower with them. Off keeps the moons and drops the rings.' },
+      { id: 'planetaryRings', label: 'Saturn\u2019s system in multi-planet scenes', type: 'toggle', value: true, world: true, note: 'Its rings and moons, as real bodies. A ring particle orbits in ten hours against Mercury\u2019s eighty-eight days, so the whole system integrates about 190\u00d7 slower with them. Off leaves a bare Saturn.' },
       { id: 'thermal', label: 'Thermal evolution', type: 'toggle', value: true, world: true, note: 'Irradiation, radiative cooling, melting.' },
       { id: 'relativity', label: 'Relativistic precession', type: 'toggle', value: false, world: true, note: 'First post-Newtonian term. Mercury gains 43″/century.' },
       { id: 'theta', label: 'Barnes-Hut θ', type: 'range', min: 0, max: 1.0, step: 0.05, value: 0.5, world: true, format: (v) => (v === 0 ? 'exact' : v.toFixed(2)), note: '0 is an exact N² sum; higher is faster and coarser.' },
