@@ -12,6 +12,28 @@ because modules will not load over `file://`. Nothing in the app reaches
 outside it — copy the folder anywhere and serve it and you have the whole
 sandbox, fonts included.
 
+### On GitHub Pages
+
+Because of that, any static host will do and nothing has to be built first.
+**Settings → Pages → Source: GitHub Actions**, and the workflow in
+`.github/workflows/pages.yml` publishes on every push to `main`:
+
+> https://idoadjadjajdada.github.io/Helxis/
+
+The capital H matters — Pages paths are case-sensitive.
+
+It uploads `index.html`, `style.css`, `src/` and `fonts/` and nothing else, so
+what is served is the sandbox rather than the workshop around it. Every asset
+reference in the app is relative, which is what lets it sit under `/Helxis/`
+instead of a domain root; the workflow fails the build if an absolute path ever
+creeps in, because that is the one mistake that works locally and 404s only
+once deployed.
+
+Deploying the repository root works too and needs no workflow at all — Settings
+→ Pages → Deploy from a branch → `main` / `(root)`. The `.nojekyll` file at the
+root is there for that case, so Pages serves the files as they are instead of
+running them through Jekyll.
+
 ---
 
 ## What it actually simulates
