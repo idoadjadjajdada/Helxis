@@ -261,14 +261,29 @@ class App {
   }
 
   setSpeedIndex(i) {
+    if (!Number.isFinite(i)) return;
     this.speedIndex = clamp(i, 0, TIME_SCALES.length - 1);
-    document.getElementById('time-scale').value = String(this.speedIndex);
+    this.ui.syncSpeed();
     if (this.paused) this.togglePause();
   }
 
-  nudgeSpeed(dir) { this.setSpeedIndex(this.speedIndex + dir); }
+  nudgeSpeed(dir) {
+    this.setSpeedIndex(dir > 0 ? Math.floor(this.speedIndex + 1e-8) + 1 : Math.ceil(this.speedIndex - 1e-8) - 1);
+  }
 
-  get timeScale() { return TIME_SCALES[this.speedIndex].value; }
+  setTimeScale(value) {
+    value = clamp(value, TIME_SCALES[0].value, TIME_SCALES.at(-1).value);
+    let i = 0;
+    while (i < TIME_SCALES.length - 2 && TIME_SCALES[i + 1].value < value) i++;
+    const lo = TIME_SCALES[i].value, hi = TIME_SCALES[i + 1].value;
+    this.setSpeedIndex(i + Math.log(value / lo) / Math.log(hi / lo));
+  }
+
+  get timeScale() {
+    const i = Math.floor(this.speedIndex), lo = TIME_SCALES[i].value;
+    const hi = TIME_SCALES[Math.min(i + 1, TIME_SCALES.length - 1)].value;
+    return lo * Math.pow(hi / lo, this.speedIndex - i);
+  }
 
   /** One frame's worth of simulation while paused. */
   stepFrame() {

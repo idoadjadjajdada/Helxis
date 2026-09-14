@@ -26,8 +26,8 @@ normalise the error, so here are both, measured against a direct N² sum by
 
 | scene | θ | per-body rms \|Δa\|/\|a\| | worst body | rms \|Δa\| / rms \|a\| |
 |---|---|---|---|---|
-| Solar System, 12 bodies | 0.5 | 5.5 × 10⁻⁶ | 0.0013% | 9.4 × 10⁻⁹ |
-| Solar System, 12 bodies | 1.0 | 2.8 × 10⁻³ | 0.6% | 3.9 × 10⁻⁶ |
+| Solar System, 14 bodies | 0.5 | 5.5 × 10⁻⁶ | 0.0013% | 5.7 × 10⁻¹⁰ |
+| Solar System, 14 bodies | 1.0 | 2.8 × 10⁻³ | 0.6% | 2.0 × 10⁻⁷ |
 | 800 equal masses in a ball | 0.5 | 4.7 × 10⁻² | 114% | 1.8 × 10⁻⁴ |
 | 800 equal masses in a ball | 1.0 | 1.9 × 10⁻¹ | 312% | 1.2 × 10⁻³ |
 
@@ -128,21 +128,31 @@ what is left is re-derived from the real mass limits — so a neutron-star merge
 that crosses the TOV limit collapses to a black hole rather than remaining a
 very heavy neutron star.
 
-**Parcel collisions** resolve qualifying large impacts as moving material rather
-than analytic remnants. Molten parcels now resist compression through a 2D
-area-density constraint based on [Macklin and Müller (2013)](https://mmacklin.com/pbf_sig_preprint.pdf).
-The implementation uses four iterations, a poly6 kernel spanning two parcel
-diameters, and a rest density calibrated on the initial hexagonal packing.
-Cold neighbours act as moving boundaries. Pressure is clamped to zero at a
-free surface, so the solver does not pull detached ejecta back into a body.
+**Parcel collisions** resolve qualifying large impacts as moving material.
+The runtime uses a cubic-spline SPH density estimate and a non-negative Tait
+pressure law for molten material, with granular contacts for solids. The older
+position-constraint experiment remains in `fluid.js` for comparison; it is not
+the runtime pressure solver.
 
-This is a hybrid approximation: bounded density corrections change positions,
-while central, inelastic impulses oppose compression without increasing kinetic
-energy. Their dissipated energy becomes heat. Directly adding correction/dt to
-velocity was rejected because packing error could turn into an energetic
-explosion as the collision timestep shrank. Each iteration limits a parcel's
-aggregate correction to 0.2 of its radius, locally, without slowing unrelated
-clumps. Four iterations do not guarantee incompressibility during severe impacts.
+The reference areal density follows each material's physical density to the
+2/3 power, relative to its parent's bulk mixture. This is the coarse 2D
+mapping of the smaller volume occupied by dense material at equal mass.
+It allows molten iron deposited above silicate to sink, rather than having
+pressure support every material identically. The regression test deliberately
+inverts the layers first, then checks that iron ends up inside while both
+material masses are preserved.
+
+Each parcel step is limited by motion and by the pressure wave speed, including
+the increase in stiffness under compression. Steps are recalculated during the
+impact. The default impact resolution is 800 parcels; `grainCount` can raise it.
+Small fragment reimpacts use the analytic solver relative to the largest rocky
+body in the scene, so a tiny debris collision cannot restart a planet-scale
+parcel simulation and hold down the whole clock.
+Compact, coherently rotating clumps can return to hot bodies without waiting
+for a magma ocean to freeze. Condensation checks run every 30 parcel steps;
+a 6,000-step work guard coarsens the remaining material. Extended discs are
+split before that conversion so their orbital motion is not averaged into the
+primary. Coarsened spheres are checked for overlaps before spawning.
 
 Fusion energy is included as `cp*T + latent*melt`, with a linear melt interval
 from 0.86 to 1.14 times the tabulated melting point. Heating and cooling invert
@@ -156,10 +166,23 @@ bulk round trips are tested. Spatial field history and different-temperature
 mixtures remain lossy at condensation; angular momentum across the conversion
 is not guaranteed because body and parcel moments of inertia differ.
 
-The analytic/parcel gate and forced-condensation fallback remain. External
-body-to-parcel gravity has the correct finite interior coefficient, but lacks
-the reciprocal force on bodies. These limitations mean the current model must
-not be described as a validated predictor of lunar debris mass.
+Surviving bodies and parcels advance on a shared clock, with mutual gravity.
+The preset uses a grazing impact parameter of 0.8 at contact and an approach
+speed of 4 km/s, with fixed material sampling for a reproducible demonstration.
+`npm run test:giant-impact` follows the real preset for two simulated days and
+checks for a bound moon on an orbit that clears the primary. The reference run
+leaves a satellite of approximately seven lunar masses; it does not reproduce
+the actual Moon’s mass. Other sampling seeds and collision geometries can give
+different outcomes. This is a simplified 2D sandbox, not a calibrated predictor of
+lunar mass or the unique history of Earth's Moon. Real Moon formation depends
+on the impact geometry and the bodies' thermal and rotational state; see
+[NASA's overview](https://science.nasa.gov/moon/formation/).
+
+Saturn carries persistent visible ring bands when placed from the catalogue or
+loaded in a system. The Solar System includes Titan and Enceladus. The dedicated
+Saturn preset also retains its interacting ring particles; the continuous bands
+are a visual representation and do not add hundreds of bodies to the full
+Solar System.
 
 **Relativity** is optional: the first post-Newtonian Schwarzschild term, off by
 default. Turn it on and Mercury's perihelion advances 43.07″ per century against
@@ -310,7 +333,12 @@ Each `advance()` is given a wall-clock budget rather than a substep count. A
 scene that cannot keep up runs the clock slower instead of dropping frames, and
 the status line says **TIME LIMITED** when that is happening rather than
 pretending the requested rate was achieved. Raise **Physics time budget** to
-trade frame rate for simulated rate.
+trade frame rate for simulated rate. Click the speed readout to open a continuous
+logarithmic slider, or enter an exact number of simulated seconds per real
+second. The popup also shows the achieved rate. During an impact, higher
+requested rates allow more safe parcel steps, up to three times the configured
+frame budget. Unfulfilled fast-forward requests are discarded so lowering the
+speed responds immediately.
 
 What costs: body count, and the spread of timescales in the scene. The step is
 shared, so the fastest body sets it for everyone — a scene holding both a tight

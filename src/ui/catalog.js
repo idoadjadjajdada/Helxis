@@ -613,6 +613,11 @@ export function instantiate(entry, opts = {}) {
     kind: entry.kind,
     evolved: !!entry.evolved,
     catalogId: entry.id,
+    rings: entry.id === 'saturn' ? [
+      { inner: 1.24, outer: 1.52, color: '#817664', opacity: 0.4 },
+      { inner: 1.52, outer: 1.95, color: '#d4c5a4', opacity: 0.8 },
+      { inner: 2.03, outer: 2.3, color: '#b5a88e', opacity: 0.65 },
+    ] : null,
     mass,
     radius,
     composition: entry.composition,

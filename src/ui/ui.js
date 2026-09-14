@@ -68,10 +68,17 @@ export class UI {
   // --- construction ---------------------------------------------------------
 
   buildTransport() {
-    const sel = $('time-scale');
-    sel.innerHTML = TIME_SCALES
-      .map((s, i) => `<option value="${i}">${s.label}</option>`).join('');
-    sel.value = String(TIME_SCALES.findIndex((s) => s.value === 86400));
+    this.syncSpeed();
+  }
+
+  syncSpeed() {
+    const rate = this.app.timeScale;
+    const text = rate < 60 ? `${Number(rate.toPrecision(4))}×` : `${formatTime(rate)}/s`;
+    $('time-scale').textContent = text;
+    $('speed-value').textContent = text;
+    $('speed-slider').value = String(this.app.speedIndex);
+    $('speed-slider').setAttribute('aria-valuetext', text);
+    $('speed-exact').value = String(Number(rate.toPrecision(10)));
   }
 
   buildPresetSelect() {
@@ -173,7 +180,12 @@ export class UI {
     $('time-faster').addEventListener('click', () => app.nudgeSpeed(1));
     $('time-step').addEventListener('click', () => app.stepFrame());
     $('time-reset').addEventListener('click', () => app.restart());
-    $('time-scale').addEventListener('change', (e) => app.setSpeedIndex(Number(e.target.value)));
+    $('speed-slider').addEventListener('input', (e) => app.setSpeedIndex(Number(e.target.value)));
+    $('speed-exact').addEventListener('change', (e) => {
+      const value = Number(e.target.value);
+      if (Number.isFinite(value) && value > 0) app.setTimeScale(value);
+      else this.syncSpeed();
+    });
 
     $('preset-select').addEventListener('change', (e) => {
       if (e.target.value) {
@@ -454,6 +466,7 @@ export class UI {
     const bodies = `${app.world.bodies.length} ${app.world.bodies.length === 1 ? 'body' : 'bodies'}`;
     $('status-bodies').textContent = parcels ? `${bodies} · ${parcels} parcels` : bodies;
     const rate = Math.max(0, app.world.achievedRate || 0);
+    $('speed-actual').textContent = app.paused ? 'Paused' : `Actual: ${formatTime(rate)}/s${app.world.throttled ? ' · limited by collision accuracy' : ''}`;
     $('status-state').title = app.paused ? 'Simulation paused'
       : `Actual speed: ${rate.toPrecision(3)} simulated seconds per real second`;
     if (!app.paused && app.world.throttled) {

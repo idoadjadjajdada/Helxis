@@ -54,7 +54,7 @@ function fmt(v) {
   return v.toPrecision(6);
 }
 
-function section(title) { results.push(`\n${title}`); }
+function section(title) { console.log(title); results.push(`\n${title}`); }
 
 // ───────────────────────────────────────────────────────────── bodies ──────
 
@@ -552,6 +552,9 @@ section('Regressions found in the second review');
   for (const theta of [0.3, 0.5, 0.8]) {
     const w = new World({ collisions: false, thermal: false, tidalDisruption: false, frameBudgetMs: 1e9, maxSubsteps: 1e9, theta });
     loadPreset(w, 'solar-system');
+    // Keep this original twenty-year planetary momentum benchmark at its
+    // original scale; the close Saturn satellites have separate orbit checks.
+    for (const b of [...w.bodies]) if (b.catalogId === 'titan' || b.catalogId === 'enceladus') w.remove(b);
     const bc0 = w.barycenter();
     let scale = 0;
     for (const b of w.bodies) scale += b.mass * Math.hypot(b.vx, b.vy);
@@ -1744,8 +1747,10 @@ section('Matter, as parcels');
     w.on('shatter', () => { shattered++; });
     w.on('condense', () => { condensed++; });
 
-    const t0 = Date.now();
-    while ((shattered === 0 || w.grains.n > 0) && Date.now() - t0 < 40000) w.advance(DAY);
+    // Bound work by calls/substeps, not by CPU speed or other processes.
+    // Each call is already capped at 400 parcel steps, and the solver's
+    // coarsening guard must finish this event well inside sixty calls.
+    for (let frame = 0; frame < 60 && (shattered === 0 || w.grains.n > 0); frame++) w.advance(DAY);
     assert('a big collision becomes parcels rather than an outcome', shattered === 1,
       `${shattered} shatter events`);
     assert('and the parcels become bodies again', condensed > 0 && w.grains.n === 0,
@@ -1819,11 +1824,11 @@ section('The numbers the README quotes');
   const s5 = treeError(sol, 0.5);
   check('Solar System per-body rms at theta 0.5', s5.perBody, 5.5e-6, 0.3);
   check('Solar System worst body at theta 0.5', s5.worst * 100, 0.0013, 0.3, '%');
-  check('Solar System scene-normalised rms at theta 0.5', s5.global, 9.4e-9, 0.3);
+  check('Solar System scene-normalised rms at theta 0.5', s5.global, 5.68e-10, 0.3);
   const s1 = treeError(sol, 1.0);
   check('Solar System per-body rms at theta 1', s1.perBody, 2.8e-3, 0.3);
   check('Solar System worst body at theta 1', s1.worst * 100, 0.63, 0.3, '%');
-  check('Solar System scene-normalised rms at theta 1', s1.global, 3.9e-6, 0.3);
+  check('Solar System scene-normalised rms at theta 1', s1.global, 1.95e-7, 0.3);
 
   const cloud = new World();
   let seed = 12345;

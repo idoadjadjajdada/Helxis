@@ -10,7 +10,8 @@
   },
   "scripts": {
     "start": "node serve.js",
-    "test": "node test/physics.test.mjs && node test/parcel.test.mjs",
+    "test": "node test/physics.test.mjs && node test/parcel.test.mjs && node test/impact.test.mjs",
+    "test:giant-impact": "node benchmark/impact-outcome.mjs",
     "test:browser": "node test/browser.test.mjs",
     "build": "node scripts/build-site.mjs"
   }

@@ -78,6 +78,7 @@ export class Body {
     this.name = opts.name || `Body ${this.id}`;
     this.kind = opts.kind || 'planet';   // star|planet|gasgiant|moon|asteroid|comet|debris|wd|ns|bh
     this.catalogId = opts.catalogId || null;
+    this.rings = opts.rings ? opts.rings.map((band) => ({ ...band })) : null;
 
     // `!= null` rather than `||` throughout: a body at the origin, at rest, is
     // an entirely ordinary thing to ask for, and `||` silently replaced every
@@ -569,7 +570,7 @@ export class Body {
   toJSON() {
     return {
       field: this.field ? this.field.toJSON() : undefined,
-      id: this.id, name: this.name, kind: this.kind, catalogId: this.catalogId,
+      id: this.id, name: this.name, kind: this.kind, catalogId: this.catalogId, rings: this.rings,
       x: this.x, y: this.y, vx: this.vx, vy: this.vy,
       mass: this.mass, radius: this.explicitRadius ? this.radius : undefined,
       composition: this.composition, temperature: this.temperature,

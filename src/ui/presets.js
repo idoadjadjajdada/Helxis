@@ -58,7 +58,7 @@ export const PRESETS = [
   {
     id: 'solar-system',
     name: 'Solar System',
-    blurb: 'All eight planets plus Ceres, Pluto and Halley, at their J2000 positions.',
+    blurb: 'All eight planets, Saturn’s rings and two moons, plus Ceres, Pluto and Halley.',
     build(world) {
       const sun = place(world, 'sun');
       // a (AU), e, longitude of perihelion, mean longitude — J2000.
@@ -73,9 +73,13 @@ export const PRESETS = [
         ['neptune', 30.06992276, 0.00859048, 44.96476227, -55.12002969],
       ];
       for (const [id, a, e, peri, L] of planets) {
-        orbit(world, sun, id, {
+        const planet = orbit(world, sun, id, {
           a: a * AU, e, argP: deg(peri), M: deg(L - peri),
         });
+        if (id === 'saturn') {
+          orbit(world, planet, 'enceladus', { a: 2.37948e8, e: 0.0047, M: 0 });
+          orbit(world, planet, 'titan', { a: 1.22187e9, e: 0.0288, M: deg(135) });
+        }
       }
       orbit(world, sun, 'ceres', { a: 2.7658 * AU, e: 0.0785, argP: deg(73.6), M: deg(95.99) });
       orbit(world, sun, 'pluto', { a: 39.482 * AU, e: 0.2488, argP: deg(224.07), M: deg(14.86) });
@@ -230,9 +234,11 @@ export const PRESETS = [
   {
     id: 'giant-impact',
     name: 'Giant impact',
-    blurb: 'A Mars-sized body onto the young Earth at 4 km/s. This is where the Moon came from.',
+    blurb: 'A grazing Mars-sized impact at 4 km/s approach speed. Watch molten debris gather into moons.',
     build(world) {
       const earth = place(world, 'earth', { name: 'Proto-Earth' });
+      // Fix the material sampling of this demonstration as well as its orbit.
+      earth.seed = 3200573430;
       earth.temperature = 1600;
       earth.crust = null;
       earth.differentiation = 0.9;
@@ -242,7 +248,8 @@ export const PRESETS = [
         massScale: (0.13 * M_EARTH) / (0.05 * M_EARTH),
         name: 'Theia',
       });
-      // Aim for an impact parameter of 0.7 *at contact*. Gravity focuses the
+      theia.seed = 3230968971;
+      // Aim for an impact parameter of 0.8 *at contact*. Gravity focuses the
       // trajectory on the way in, so the offset it needs to start with is much
       // larger than the offset it will arrive with. Angular momentum is
       // conserved — b·v is constant — which gives the offset directly.
@@ -251,7 +258,7 @@ export const PRESETS = [
       const v0 = 4000;
       const mu = G * (earth.mass + theia.mass);
       const vContact = Math.sqrt(v0 * v0 + 2 * mu * (1 / Rsum - 1 / d));
-      const bWanted = 0.7 * Rsum;
+      const bWanted = 0.8 * Rsum;
       const offset = (bWanted * vContact) / v0;
 
       theia.x = earth.x + d;

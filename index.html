@@ -38,7 +38,19 @@
     <svg viewBox="0 0 16 16" width="14" height="14"><path d="M6 3l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="square"/></svg>
   </button>
 
-  <select id="time-scale" class="select compact" aria-label="Time scale"></select>
+  <div class="speed-control">
+    <button id="time-scale" class="select compact" popovertarget="speed-popover" aria-label="Simulation speed">1 day/s</button>
+    <div id="speed-popover" class="panel speed-popover" popover>
+      <label for="speed-slider">Simulation speed</label>
+      <output id="speed-value" for="speed-slider">1 day/s</output>
+      <input id="speed-slider" type="range" min="0" max="13" step="0.001" aria-label="Simulation speed">
+      <div class="speed-limits"><span>0.1×</span><span>1 Myr/s</span></div>
+      <label class="speed-exact" for="speed-exact">Seconds per real second
+        <input id="speed-exact" type="number" min="0.1" max="31557600000000" step="any" inputmode="decimal">
+      </label>
+      <p id="speed-actual">Actual speed follows the simulation workload.</p>
+    </div>
+  </div>
 
   <button class="icon-btn" id="time-step" title="Step forward one frame" aria-label="Step forward">
     <svg viewBox="0 0 16 16" width="14" height="14"><path d="M4 3l6 5-6 5z" fill="currentColor"/><path d="M12 3v10" stroke="currentColor" stroke-width="1.8" stroke-linecap="square"/></svg>

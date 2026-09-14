@@ -120,7 +120,10 @@ export class GrainSystem {
     this._gridOccupiedCount = 0;
   }
 
-  clear() { this.n = 0; }
+  clear() {
+    this.n = 0; this._gravN = -1; this._sinceGravity = 0; this._gravDrift = 0;
+    this._rho?.fill(0);
+  }
 
   add(px, py, pvx, pvy, m, matIdx, temperature, radius) {
     if (this.n >= this.cap) return -1;
@@ -146,6 +149,7 @@ export class GrainSystem {
       this.mass[i] = this.mass[last]; this.r[i] = this.r[last];
       this.mat[i] = this.mat[last]; this.temp[i] = this.temp[last];
       this.melt[i] = this.melt[last]; this.cluster[i] = this.cluster[last];
+      this.rho0[i] = this.rho0[last];
     }
   }
 
@@ -226,6 +230,7 @@ export class GrainSystem {
       cy += placed[k][1] * inventory[k].mass / body.mass;
     }
     const start = this.n;
+    const materialDensity = 1 / entries.reduce((v, [key, fraction]) => v + fraction / MATERIALS[key].rho, 0);
     for (let k = 0; k < placed.length; k++) {
       const lx = placed[k][0] - cx, ly = placed[k][1] - cy;
       const rx = lx * cosR - ly * sinR, ry = lx * sinR + ly * cosR;
@@ -233,6 +238,11 @@ export class GrainSystem {
       this.add(body.x + rx, body.y + ry,
         body.vx - body.spin * ry, body.vy + body.spin * rx,
         item.mass, item.mat, body.temperature, rp);
+      // Equal-mass parcels have a smaller equilibrium footprint in dense
+      // material: area scales as volume^(2/3). Without this phase-dependent
+      // reference density, pressure supports iron exactly like silicate and
+      // metal deposited on the outside can never sink through the mantle.
+      this.rho0[this.n - 1] *= Math.pow(RHO[item.mat] / materialDensity, 2 / 3);
     }
     return this.n - start;
   }
@@ -768,7 +778,9 @@ export class GrainSystem {
     let worst = Infinity;
     for (let i = 0; i < this.n; i++) {
       if (this.melt[i] < 0.15) continue;
-      const c = SOUND[this.mat[i]];
+      // The Tait equation stiffens as density rises (dP/drho ∝ ratio^6).
+      const ratio = this._rho ? this._rho[i] / this.rho0[i] : 1;
+      const c = SOUND[this.mat[i]] * Math.pow(Math.max(1, ratio), 3);
       if (c > 0) worst = Math.min(worst, (0.4 * 2 * this.r[i]) / c);
     }
     return isFinite(worst) ? worst : Infinity;
@@ -984,14 +996,20 @@ export class GrainSystem {
     }
     // Velocity dispersion says whether this is a settled object or a mid-air
     // collection of debris that has not decided yet.
-    let disp = 0;
+    let disp = 0, residual = 0, extent = 0;
+    const spin = I > 0 ? L / I : 0;
     for (const i of list) {
-      disp += this.mass[i] * ((this.vx[i] - vxm) ** 2 + (this.vy[i] - vym) ** 2);
+      const rx = this.x[i] - xm, ry = this.y[i] - ym;
+      const vx = this.vx[i] - vxm, vy = this.vy[i] - vym;
+      disp += this.mass[i] * (vx * vx + vy * vy);
+      residual += this.mass[i] * ((vx + spin * ry) ** 2 + (vy - spin * rx) ** 2);
+      extent = Math.max(extent, Math.hypot(rx, ry) + this.r[i]);
     }
     return {
       mass: m, x: xm, y: ym, vx: vxm, vy: vym,
       temperature: t / m, molten: molten / m,
-      composition: comp, spin: I > 0 ? L / I : 0,
+      composition: comp, spin, angularMomentum: L, inertia: I, extent,
+      residual: Math.sqrt(residual / m),
       dispersion: Math.sqrt(disp / m), count: list.length,
     };
   }

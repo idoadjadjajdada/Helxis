@@ -41,12 +41,28 @@ await p.waitForTimeout(900);
 let passed = 0, failed = 0;
 const log = [];
 const step = async (name, fn) => {
+  console.log(name);
   try {
     const r = await fn();
     if (r && r.fail) { failed++; log.push(` FAIL  ${name} — ${r.fail}`); }
     else { passed++; log.push(`  ok   ${name}${r ? ' — ' + r : ''}`); }
   } catch (e) { failed++; log.push(` FAIL  ${name} — THREW ${e.message}`); }
 };
+
+await step('precise speed popover', async () => {
+  await p.click('#time-scale');
+  await p.fill('#speed-exact', '251424');
+  await p.locator('#speed-exact').blur();
+  const exact=await p.evaluate(()=>window.helxis.timeScale);
+  if(Math.abs(exact-251424)>1e-6)return {fail:`requested 251424, got ${exact}`};
+  await p.locator('#speed-slider').focus();
+  await p.keyboard.press('ArrowRight');
+  const after=await p.evaluate(()=>window.helxis.timeScale);
+  if(!(after>exact && after<exact*1.01))return {fail:`slider ${exact} -> ${after}`};
+  await p.keyboard.press('Escape');
+  if(await p.locator('#speed-popover').isVisible())return {fail:'Escape did not close the popover'};
+  return `${exact} -> ${after.toFixed(2)} seconds/s`;
+});
 
 // place a body from the catalogue by clicking the list then the canvas
 await step('arm+place', async () => {
@@ -146,7 +162,7 @@ await step('undo', async () => {
 });
 
 await step('delete tool', async () => {
-  await p.evaluate(() => { const h=window.helxis; h.loadPreset('jupiter-system'); h.frameAll(); });
+  await p.evaluate(() => { const h=window.helxis; h.loadPreset('jupiter-system'); if (!h.paused) h.togglePause(); h.frameAll(); });
   await p.waitForTimeout(400);
   const before = await p.evaluate(() => window.helxis.world.bodies.length);
   await p.keyboard.press('0');

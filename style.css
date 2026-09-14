@@ -1092,3 +1092,14 @@ input[type=range]::-moz-range-thumb {
   .toast { animation: none; }
   * { transition-duration: .01ms !important; }
 }
+
+/* Native popover keeps the precise speed controls above the canvas. */
+.speed-control { position: relative; }
+.speed-popover { position: fixed; inset: 78px auto auto 50%; transform: translateX(-50%); width: min(340px, calc(100vw - 32px)); padding: 18px; color: var(--text, #ddd); background: #171b20; border: 1px solid #414851; }
+.speed-popover::backdrop { background: transparent; }
+.speed-popover label { display: block; font-size: 12px; }
+#speed-value { display: block; margin: 10px 0; font-size: 20px; }
+#speed-slider { width: 100%; }
+.speed-limits { display: flex; justify-content: space-between; font-size: 11px; opacity: .65; margin: 6px 0 18px; }
+.speed-exact input { display: block; width: 100%; margin-top: 6px; padding: 8px; color: inherit; background: #101419; border: 1px solid #414851; }
+#speed-actual { font-size: 11px; line-height: 1.5; opacity: .75; margin: 12px 0 0; }

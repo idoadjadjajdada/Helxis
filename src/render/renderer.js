@@ -194,7 +194,7 @@ export class Renderer {
     // Back to front by size, so a moon in front of a planet lands on top of it.
     const visible = [];
     for (const b of world.bodies) {
-      if (!cam.visible(b.x, b.y, b.radius, 6)) continue;
+      if (!cam.visible(b.x, b.y, b.radius * (b.rings?.at(-1)?.outer || 1), 6)) continue;
       visible.push(b);
     }
     visible.sort((a, b) => b.radius - a.radius);
@@ -215,6 +215,19 @@ export class Renderer {
         ctx.fillRect(P[0] | 0, P[1] | 0, 1, 1);
         ctx.globalAlpha = 1;
         continue;
+      }
+
+      if (b.rings && pr >= 1) {
+        ctx.save();
+        for (const band of b.rings) {
+          ctx.strokeStyle = band.color;
+          ctx.globalAlpha = band.opacity;
+          ctx.lineWidth = (band.outer - band.inner) * pr;
+          ctx.beginPath();
+          ctx.arc(P[0], P[1], (band.outer + band.inner) * 0.5 * pr, 0, TAU);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
 
       if (pr < 1.8) {
