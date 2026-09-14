@@ -1719,9 +1719,20 @@ section('A giant impact makes a moon out of parcels');
   //
   // So the mass and the composition are one result, not two: an iron-poor moon
   // is the evidence that it formed the way it is supposed to.
-  const w = new World();
+  //
+  // The frame budget is the reason this can be asserted at all. In the app the
+  // parcels are stepped against a wall-clock deadline -- `stepGrains` stops
+  // when it has spent its milliseconds, whatever is left of the substep debt --
+  // so how much simulated time a frame covers depends on how fast the machine
+  // happens to be at that moment, and the same impact gives a different moon
+  // every run. Measured back to back in one process at the default budget: 4
+  // bodies and a 0.74-lunar-mass moon, then 2 bodies and a 0.71 one. With the
+  // deadline out of reach the substep count is a function of the debt alone,
+  // and two runs agree to every figure printed.
+  const w = new World({ frameBudgetMs: 1e9 });
   const st = defaultSettings();
   applyToWorld(st, w);
+  w.settings.frameBudgetMs = 1e9;
   loadPreset(w, 'giant-impact');
   let guard = 0;
   while (!(w.grains && w.grains.n > 0) && guard++ < 200000) w.advance(60);
@@ -1750,27 +1761,28 @@ section('A giant impact makes a moon out of parcels');
   if (moon) {
     const d = Math.hypot(moon.x - planet.x, moon.y - planet.y);
     const v = Math.hypot(moon.vx - planet.vx, moon.vy - planet.vy);
-    const ratio = v / Math.sqrt((2 * G * planet.mass) / d);
-    /* Whether the moon ends up BOUND is genuinely stochastic here, and this
-     * assertion is deliberately weaker than it should be.
+    // Mutual escape velocity, so the pair's own mass is in it rather than the
+    // planet's alone -- which understates it, and matters exactly here where
+    // the answer is close to one.
+    const ratio = v / Math.sqrt((2 * G * (planet.mass + moon.mass)) / d);
+    /* The moon comes out on the edge of escape, and this records where.
      *
-     * Measured over five runs: 4 bound, 1 escaping, at v/vEsc of 0.58, 0.49,
-     * 0.72, 1.28 and 0.73. So it makes a bound moon most of the time, which is
-     * the claim -- but a single run cannot assert it, and running it five times
-     * costs four hundred seconds.
+     * Now that the run is reproducible it is 1.046 at 34 planet radii: a wide,
+     * marginally unbound orbit. Across the five stochastic runs before the
+     * wall clock was taken out of it, four were bound and one was not, so this
+     * is a genuinely marginal outcome and this seed sits on the wrong side of
+     * it by five percent.
      *
-     * It is not reproducible either, which is the part worth fixing. Bodies
-     * built by condenseGrains are created without an explicit seed, so they
-     * fall back to hashSeed(name, id) -- and an id is allocation order. The
-     * collision RNG reads those seeds, so the whole outcome still depends on
-     * how many objects the session happened to make first: this scenario gives
-     * a bound 1.28-lunar-mass moon on its own and an escaping 0.88 one from
-     * inside the suite. Seeding a condensed body from its own mass and
-     * position instead would make it reproducible, and then this can go back
-     * to asserting the thing it wants to.
+     * The band is deliberately not tightened to 1. Making the disc shed a
+     * little more energy would put it under, and that would be tuning the
+     * physics to a test number, which is the one thing this file exists to
+     * catch. Getting a comfortably bound moon is a physics job -- more
+     * dissipation in the disc, or forming it further in -- and when that is
+     * done this number moves on its own and the band can close.
      */
-    assert('and not flung away outright', ratio < 1.5,
-      `v/vEsc ${ratio.toFixed(2)} — ${ratio < 1 ? 'bound' : 'escaping'} at ${(d / planet.radius).toFixed(1)} planet radii`);
+    assert('left in a wide orbit at the edge of escape', ratio < 1.15,
+      `v/vEsc ${ratio.toFixed(3)} at ${(d / planet.radius).toFixed(1)} planet radii`
+      + ` — ${ratio < 1 ? 'bound' : 'marginally unbound'}`);
     assert('and made of mantle: iron-poor next to the planet it came off',
       ironOf(moon) < ironOf(planet) * 0.6,
       `moon ${(ironOf(moon) * 100).toFixed(1)}% iron vs planet ${(ironOf(planet) * 100).toFixed(1)}%`);

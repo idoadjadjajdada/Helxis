@@ -613,11 +613,13 @@ function doMerge(target, proj, ctx) {
       // remnant at the centre of mass teleports mass: the ring carries a
       // mass-weighted offset that has to be answered by moving the remnant the
       // other way, or the pair's centre of mass jumps by a few planetary radii.
-      let dm = 0, dpx = 0, dpy = 0, dx = 0, dy = 0;
+      // Position is answered by recenterProducts below, which puts the
+      // products' own centre of mass back on the pair's; only momentum has
+      // to be redistributed by hand.
+      let dm = 0, dpx = 0, dpy = 0;
       for (const d of discBodies) {
         dm += d.mass;
         dpx += d.mass * d.vx; dpy += d.mass * d.vy;
-        dx += d.mass * (d.x - comX); dy += d.mass * (d.y - comY);
       }
       const newM = Mtot - dm;
       if (newM > 0) {

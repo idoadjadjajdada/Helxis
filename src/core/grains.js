@@ -496,7 +496,7 @@ export class GrainSystem {
   contacts(dt, opts) {
     const g = this._grid;
     if (!g) return;
-    const { minX, minY, cols, rows, size } = g;
+    const { cols, rows } = g;            // this pass walks cells by index
     const restitutionSolid = opts.restitution != null ? opts.restitution : 0.12;
     let heat = this._heat;
     if (!heat || heat.length < this.cap) heat = this._heat = new Float64Array(this.cap);

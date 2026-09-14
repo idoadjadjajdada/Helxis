@@ -1,5 +1,5 @@
 import {
-  M_SUN, R_SUN, M_EARTH, R_EARTH, M_JUP, R_JUP, M_MOON, R_MOON, DAY, AU,
+  M_SUN, R_SUN, M_EARTH, R_EARTH, M_JUP, R_JUP, M_MOON, R_MOON, DAY,
 } from '../core/const.js';
 import { Body, compactRadius } from '../core/body.js';
 import { hashSeed } from '../core/rng.js';
@@ -643,9 +643,29 @@ export function instantiate(entry, opts = {}) {
   const massScale = opts.massScale != null ? opts.massScale : 1;
   const mass = entry.mass * massScale;
   // No Date.now(), no Math.random(): placing the same object twice in the same
-  // order has to produce the same two bodies. Left undefined, Body derives one
-  // from its name and its id, which is unique within a world.
-  const seed = opts.seed != null ? opts.seed : undefined;
+  // order has to produce the same two bodies.
+  //
+  // That used to be left to Body, which derives a seed from the name and the
+  // id when given none -- on the understanding that an id is "unique within a
+  // world". It is not: NEXT_ID is module scope and counts every body the
+  // process has ever made, so the id a preset's Earth gets depends on how many
+  // other worlds were built first. resolveCollision draws its RNG from the
+  // seeds of the bodies involved, which put allocation order inside the
+  // physics.
+  //
+  // In fairness to it, that was a latent hazard rather than the cause of
+  // anything observed: the parcel path's run-to-run variance turned out to be
+  // the wall-clock deadline in stepGrains, and lifting that makes two runs
+  // agree bit for bit whatever the ids are. This is closed anyway, because a
+  // body's identity should not depend on when it was made.
+  //
+  // A catalogue body's identity is which entry it is, what it is called and
+  // how much of it there is. All three are known here and none of them depend
+  // on when it was made. Presets that need siblings to differ already pass
+  // their own seeds, so nothing loses variety.
+  const seed = opts.seed != null
+    ? opts.seed
+    : hashSeed(entry.id, opts.name || entry.name, mass.toExponential(6));
 
   let radius;
   if (entry.kind === 'bh' || entry.kind === 'ns' || entry.kind === 'wd') {

@@ -5,11 +5,14 @@
   "description": "A 2D N-body space sandbox where collisions are matter hitting matter.",
   "type": "module",
   "license": "MIT",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node serve.js",
     "test": "node test/physics.test.mjs",
     "test:browser": "node test/browser.test.mjs",
-    "build:artifact": "node scripts/build-artifact.mjs"
+    "build:artifact": "node scripts/build-artifact.mjs",
+    "map": "node scripts/index-symbols.mjs"
   }
 }

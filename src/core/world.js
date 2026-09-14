@@ -1207,8 +1207,25 @@ export class World {
 
     for (const e of born) {
       const s = e.s;
+      /* Seeded from what the cluster IS, not from when it was made.
+       *
+       * Body falls back to hashSeed(name, id) when given no seed, and an id is
+       * allocation order -- how many objects happened to exist first. That is
+       * not a fact about this body, and it does not stay inside the sprite:
+       * resolveCollision draws its RNG from the seeds of the bodies involved,
+       * so a world condensed here would decide the outcome of its NEXT
+       * collision by how busy the session had been.
+       *
+       * Mass, position, velocity and parcel count are all determined by the
+       * physics that just ran, so the same collision now names its products
+       * the same way wherever it happens.
+       */
+      const seed = hashSeed(
+        Math.round(s.mass), Math.round(s.x), Math.round(s.y),
+        Math.round(s.vx * 1e3), Math.round(s.vy * 1e3), e.list.length,
+      );
       const body = new Body({
-        name: 'Body',
+        name: 'Body', seed,
         kind: s.mass > 3e22 ? 'planet' : 'asteroid',
         mass: s.mass, composition: s.composition, temperature: s.temperature,
         x: s.x, y: s.y, vx: s.vx, vy: s.vy, spin: s.spin,

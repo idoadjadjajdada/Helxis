@@ -1,6 +1,6 @@
 import { fbm, ridged, valueNoise2, makeRng } from '../core/rng.js';
 import {
-  MATERIALS, surfaceColor, incandescence, compositionProperty, dominantMaterial,
+  MATERIALS, surfaceColor, incandescence, compositionProperty,
   volatileFraction,
 } from '../core/materials.js';
 import { EMPTY, matKey } from '../core/cells.js';

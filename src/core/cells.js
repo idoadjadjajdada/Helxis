@@ -639,7 +639,6 @@ export class MaterialField {
     // Molten cells carry material around with them and lose speed to drag. The
     // exchange is with the neighbour they are heading toward, which mixes the
     // two materials along the flow instead of rotating a rigid pattern.
-    let moved = 0;
     for (let j = 0; j < n; j++) {
       for (let i = (j + parity + 1) & 1; i < n; i += 2) {
         const k = this.idx(i, j);
@@ -655,7 +654,6 @@ export class MaterialField {
         if (Math.min(sp, 1) * step * 40 > 0.5) {
           const m = mat[k]; mat[k] = mat[k2]; mat[k2] = m;
           const t = temp[k]; temp[k] = temp[k2]; temp[k2] = t;
-          moved++;
         }
         const drag = 1 - clamp(step * 3.5, 0, 0.9);
         vx[k] *= drag; vy[k] *= drag;
@@ -694,7 +692,6 @@ export class MaterialField {
           // reads as a depth.
           relief[k] = clamp(relief[best] - 0.15, -1, 1);
           mat[best] = EMPTY; melt[best] = 0;
-          moved++;
         }
       }
     }

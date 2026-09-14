@@ -7,10 +7,16 @@ the whole thing", and anything that reaches outside the folder at runtime breaks
 that promise.
 
 ```
-npm start     # http://localhost:4173/  — the app. No build step.
-npm test      # test/physics.test.mjs   — ~5 min, 287 checks, prints progress to stderr
-node scripts/build-artifact.mjs   # one self-contained HTML file in build/
+npm start                # http://localhost:4173/  — the app. No build step.
+npm test                 # ~5 min, 287 checks, prints progress to stderr
+npm run build:artifact   # one self-contained HTML file in build/
+npm run map              # regenerate MAP.md after moving code (--check fails if stale)
 ```
+
+**Read `MAP.md` before opening a source file.** It lists every top-level symbol
+and class method with its line number, so a lookup is `sed -n '620,+30p'
+src/core/world.js` rather than reading thirteen hundred lines to find one
+method. 702 lines standing in for 13,500.
 
 ---
 
@@ -97,9 +103,19 @@ Append a row after measuring something expensive; never edit history.
   puts every clump at the same radius — it is load-bearing, not laziness.
 - **A cloud expands without crossings only when `v = H·r`.** Any velocity floor
   (`a + b·r` with `a > 0`) has inner pieces overtaking outer ones.
-- **Physics must not depend on `body.id`** — that is allocation order. Seed from
-  `body.seed`. Still half-true: `condenseGrains` makes bodies without explicit
-  seeds, so they fall back to `hashSeed(name, id)`. **Open.**
+- **The parcel path is nondeterministic because of the wall clock, not the
+  RNG.** `stepGrains` stops when it has spent its milliseconds, so how much
+  simulated time a frame covers depends on machine speed. Two back-to-back runs
+  in one process gave 4 bodies / 0.74 Mm and 2 bodies / 0.71 Mm. Give a test
+  `frameBudgetMs: 1e9` and the substep count becomes a function of the debt
+  alone — two runs then agree to every printed figure. **Anything asserting a
+  parcel outcome must lift the deadline or it will flake.**
+- **Physics must not depend on `body.id`** — that is allocation order, and
+  `NEXT_ID` is module scope, counting every body the process ever made (the
+  comment claiming it is "unique within a world" was wrong). `instantiate` and
+  `condenseGrains` now pass explicit seeds. This was a latent hazard, *not* the
+  cause of the variance above — I assumed it was, twice, and measurement said
+  otherwise both times.
 - **Ring particles orbit in hours**, planets in months. The step chooser is
   global, so rings set the pace for the whole scene — the solar system runs
   ~190× slower with them. That is what `planetaryRings` switches.

@@ -231,7 +231,6 @@ export class Renderer {
       const size = pickSize(pr);
       const tex = bodyTexture(b, size);
       const d = Math.max(2, Math.round(pr * 2));
-      const x = Math.round(P[0] - d / 2), y = Math.round(P[1] - d / 2);
 
       ctx.save();
       // Rotate about the body's centre. Nearest-neighbour sampling keeps the
@@ -364,7 +363,6 @@ export class Renderer {
 
     if (shadow > 4) {
       // A hint of an accretion disc, brighter on the side rotating toward us.
-      const outer = shadow * 3.1;
       for (let i = 0; i < 3; i++) {
         const r = shadow * (1.5 + i * 0.7);
         ctx.strokeStyle = `rgba(${255},${190 - i * 30},${120 - i * 30},${0.28 - i * 0.07})`;

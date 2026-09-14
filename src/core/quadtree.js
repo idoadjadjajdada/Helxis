@@ -103,7 +103,6 @@ export class Quadtree {
   }
 
   insert(node, bi, depth) {
-    const bodies = this.bodies;
     // Below about 1e-10 of the root size, two bodies are numerically coincident
     // and subdividing further will not separate them. Stack them in one leaf.
     if (depth > 60) {
