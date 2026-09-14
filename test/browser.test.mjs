@@ -343,6 +343,71 @@ await step('a selected body is readable on a small phone', async () => {
   return bad.length ? { fail: bad.join('; ') } : worst.join(' ');
 });
 
+// The clock opens its slider on a real click.
+//
+// This is here because it was reported as broken on a deployed site and was
+// not reproducible from the console: `helxis.ui.toggleSpeedPop()` worked, the
+// markup was present, the stylesheet was present, and the deployed bytes were
+// identical to the repo. The gap was that nothing drove it the way a person
+// does. Anything that a user reaches by pointing at it has to be tested by
+// pointing at it.
+await step('clock opens a slider on a real click', async () => {
+  const before = await p.evaluate(() => document.getElementById('speed-pop').hidden);
+  await p.click('#time-scale');
+  await p.waitForTimeout(150);
+  const r = await p.evaluate(() => {
+    const pop = document.getElementById('speed-pop');
+    const sl = document.getElementById('speed-slider');
+    const box = sl.getBoundingClientRect();
+    const cs = getComputedStyle(pop);
+    return {
+      hidden: pop.hidden,
+      display: cs.display,
+      visible: !!sl.getClientRects().length,
+      width: Math.round(box.width),
+      onScreen: box.x >= 0 && box.right <= innerWidth && box.y >= 0 && box.bottom <= innerHeight,
+      expanded: document.getElementById('time-scale').getAttribute('aria-expanded'),
+    };
+  });
+  if (before !== true) return { fail: 'popover was already open before the click' };
+  if (r.hidden) return { fail: 'clicking the clock did not open the popover' };
+  if (!r.visible || r.width < 60) return { fail: `slider not usable (width ${r.width})` };
+  if (!r.onScreen) return { fail: 'slider opened off screen' };
+  if (r.expanded !== 'true') return { fail: `aria-expanded is ${r.expanded}` };
+  return `opened, slider ${r.width}px, aria-expanded=${r.expanded}`;
+});
+
+// And dragging it actually moves the clock, to a value off the old ladder.
+await step('the slider sets the clock continuously', async () => {
+  const v = await p.evaluate(() => {
+    const sl = document.getElementById('speed-slider');
+    sl.value = '5.37';
+    sl.dispatchEvent(new Event('input', { bubbles: true }));
+    return {
+      speed: window.helxis.timeScale,
+      label: document.getElementById('time-scale').textContent.trim(),
+    };
+  });
+  const want = Math.pow(10, 5.37);
+  if (Math.abs(v.speed - want) / want > 1e-6) {
+    return { fail: `clock is ${v.speed}, expected ${want}` };
+  }
+  return `${v.label} (${v.speed.toExponential(3)} s/s)`;
+});
+
+// Clicking away closes it; clicking inside does not.
+await step('the clock popover closes on an outside click only', async () => {
+  await p.click('#speed-slider');
+  await p.waitForTimeout(120);
+  const stillOpen = await p.evaluate(() => !document.getElementById('speed-pop').hidden);
+  await p.mouse.click(900, 700);
+  await p.waitForTimeout(150);
+  const closed = await p.evaluate(() => document.getElementById('speed-pop').hidden);
+  if (!stillOpen) return { fail: 'clicking inside the popover closed it' };
+  if (!closed) return { fail: 'clicking the canvas left it open' };
+  return 'stays open inside, closes outside';
+});
+
 console.log(log.join('\n'));
 if (errs.length) { failed += errs.length; console.log('\nERRORS:\n' + errs.join('\n')); }
 console.log(`\n${passed} passed, ${failed} failed`);

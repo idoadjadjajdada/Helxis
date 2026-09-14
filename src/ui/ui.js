@@ -196,10 +196,32 @@ export class UI {
     $('time-faster').addEventListener('click', () => app.nudgeSpeed(1));
     $('time-step').addEventListener('click', () => app.stepFrame());
     $('time-reset').addEventListener('click', () => app.restart());
-    $('time-scale').addEventListener('click', (e) => {
+    /* Opening the clock, robustly.
+     *
+     * This hung on `click` alone and on stopPropagation to keep the
+     * close-on-outside handler from undoing it in the same tick. That works,
+     * but it is one ordering assumption away from a control that silently
+     * does nothing, and a control that silently does nothing is
+     * indistinguishable from a broken build — which is exactly how it was
+     * reported.
+     *
+     * So: open on pointerdown, which fires before anything can swallow a
+     * click; decide "outside" by asking where the event actually happened
+     * rather than by relying on propagation being stopped; and let the
+     * keyboard reach it, since a button that only answers a mouse is not
+     * finished.
+     */
+    const speedBtn = $('time-scale');
+    const openSpeed = (e) => {
+      e.preventDefault();          // no focus-then-click double toggle
       e.stopPropagation();
       this.toggleSpeedPop();
+    };
+    speedBtn.addEventListener('pointerdown', openSpeed);
+    speedBtn.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') openSpeed(e);
     });
+
     $('speed-slider').addEventListener('input', (e) => {
       app.setSpeed(Math.pow(10, Number(e.target.value)));
     });
@@ -207,10 +229,15 @@ export class UI {
       const b = e.target.closest('button[data-index]');
       if (b) app.setSpeedIndex(Number(b.dataset.index));
     });
-    $('speed-pop').addEventListener('click', (e) => e.stopPropagation());
-    // Anywhere else puts it away, including Escape, the way the other
-    // transient panels here behave.
-    document.addEventListener('click', () => this.toggleSpeedPop(false));
+
+    // Anywhere genuinely outside puts it away, and "outside" is a containment
+    // test rather than an assumption about which listener ran first.
+    document.addEventListener('pointerdown', (e) => {
+      const pop = $('speed-pop');
+      if (pop.hidden) return;
+      if (pop.contains(e.target) || speedBtn.contains(e.target)) return;
+      this.toggleSpeedPop(false);
+    });
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') this.toggleSpeedPop(false);
     });
