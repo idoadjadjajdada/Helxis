@@ -4,6 +4,8 @@ import { Quadtree } from './quadtree.js';
 import { resolveCollision, sweptContactDisp, tidallyDisrupt } from './collide.js';
 import { dominantAttractor } from './kepler.js';
 import { GrainSystem } from './grains.js';
+import { MaterialField, gridSizeFor } from './cells.js';
+import { hashSeed } from './rng.js';
 import { radiusFromMass } from './materials.js';
 
 // The finest step the integrator will take. Below this it is no longer
@@ -1203,7 +1205,8 @@ export class World {
       best.s.mass = m;
     }
 
-    for (const { s } of born) {
+    for (const e of born) {
+      const s = e.s;
       const body = new Body({
         name: 'Body',
         kind: s.mass > 3e22 ? 'planet' : 'asteroid',
@@ -1212,6 +1215,32 @@ export class World {
         differentiation: clamp(s.molten * 1.4 + 0.25, 0, 1),
       });
       body.name = this.nameFor(body);
+
+      /* The body keeps the arrangement the collision gave it.
+       *
+       * This used to hand the new planet a mass, a bulk composition and one
+       * temperature, and drop everything else on the floor -- so a world that
+       * had just condensed out of a giant impact was drawn from its seed like
+       * any other, and whether the impactor's metal had sunk to the core or
+       * was still lying on the surface was not merely invisible, it was not
+       * recorded anywhere. Building the field from the parcels keeps it: the
+       * renderer paints those cells directly, and the interior goes on sorting
+       * itself by density from wherever the impact actually left it.
+       */
+      if (body.canHoldField()) {
+        const sample = [];
+        for (const i of e.list) {
+          sample.push({ x: g.x[i], y: g.y[i], mass: g.mass[i], mat: g.mat[i], temp: g.temp[i] });
+        }
+        const f = MaterialField.fromParcels(
+          gridSizeFor(body.radius), hashSeed(body.seed, 'condense'),
+          sample, s.x, s.y, body.radius, body.mass,
+        );
+        if (f) {
+          body.field = f;
+          body.syncFromField();
+        }
+      }
       this.add(body);
     }
 

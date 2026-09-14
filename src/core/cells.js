@@ -130,6 +130,109 @@ export class MaterialField {
     return f;
   }
 
+  /**
+   * A field built from where the matter actually ended up.
+   *
+   * `build` paints a plausible interior from a seed: a core of the dense
+   * stuff, a shell of the light stuff, a geotherm. That is the right thing for
+   * a body the sandbox was handed. It is the wrong thing for a body that just
+   * condensed out of a collision, because the collision already decided where
+   * everything is -- and until now that answer was thrown away. A cluster of
+   * parcels was reduced to a mass, a bulk composition and one temperature,
+   * and the planet that came out had no field at all, so it was drawn from a
+   * seed like any other. Whether the impactor's metal had sunk or was lying on
+   * the surface was not merely invisible: it was not recorded anywhere.
+   *
+   * Here each parcel is dropped into the cell it occupies. A cell takes the
+   * material that has the most mass in it and the mass-weighted temperature of
+   * everything in it, so an iron-rich pocket reads as iron and a cell with a
+   * little of everything takes whichever dominates. Cells inside the disc that
+   * caught no parcel are filled from their nearest filled neighbour rather than
+   * left as holes.
+   *
+   * Relief comes from the same source: where parcels piled up thicker than the
+   * average the ground stands higher, and where the collision scooped material
+   * away it sits lower. That is terrain read off the physics rather than a
+   * noise field asserted over it.
+   */
+  static fromParcels(n, seed, parcels, cx, cy, radius, bodyMass) {
+    const f = new MaterialField(n, seed);
+    if (!(radius > 0) || !parcels || !parcels.length) return null;
+    const cells = n * n;
+    const massIn = new Float64Array(cells);
+    const tempIn = new Float64Array(cells);
+    // Per-cell mass by material, to pick the dominant one without a second pass
+    const NM = MATERIAL_KEYS.length;
+    const byMat = new Float64Array(cells * NM);
+
+    for (const p of parcels) {
+      const u = (p.x - cx) / radius, v = (p.y - cy) / radius;
+      if (!isFinite(u) || !isFinite(v)) continue;
+      const i = Math.round(((u + 1) / 2) * n - 0.5);
+      const j = Math.round(((v + 1) / 2) * n - 0.5);
+      if (!f.inside(i, j)) continue;
+      const k = f.idx(i, j);
+      massIn[k] += p.mass;
+      tempIn[k] += p.mass * p.temp;
+      byMat[k * NM + p.mat] += p.mass;
+    }
+
+    let filled = 0, totalIn = 0;
+    for (let k = 0; k < cells; k++) {
+      if (massIn[k] <= 0) continue;
+      let best = 0, bestM = -1;
+      for (let m = 0; m < NM; m++) {
+        const v = byMat[k * NM + m];
+        if (v > bestM) { bestM = v; best = m; }
+      }
+      f.mat[k] = best;
+      f.temp[k] = Math.max(T_CMB, tempIn[k] / massIn[k]);
+      totalIn += massIn[k];
+      filled++;
+    }
+    if (!filled) return null;
+
+    // Thickness relative to the mean is relief: piled up stands proud, scooped
+    // out sits low. Clamped because one dense cell should not become a spire.
+    const meanCell = totalIn / filled;
+    for (let k = 0; k < cells; k++) {
+      if (f.mat[k] === EMPTY) continue;
+      f.relief[k] = clamp((massIn[k] / meanCell - 1) * 0.8, -0.85, 0.85);
+    }
+
+    // Fill the gaps inside the disc from whatever is next to them, so the body
+    // is solid rather than moth-eaten. Several passes, because a gap can be
+    // more than one cell across.
+    for (let pass = 0; pass < 6; pass++) {
+      let patched = 0;
+      for (let j = 0; j < n; j++) {
+        for (let i = 0; i < n; i++) {
+          const k = f.idx(i, j);
+          if (f.mat[k] !== EMPTY) continue;
+          const u = f.u(i), v = f.u(j);
+          if (Math.hypot(u, v) > 1) continue;
+          for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const ii = i + di, jj = j + dj;
+            if (!f.inside(ii, jj)) continue;
+            const k2 = f.idx(ii, jj);
+            if (f.mat[k2] === EMPTY) continue;
+            f.mat[k] = f.mat[k2];
+            f.temp[k] = f.temp[k2];
+            f.relief[k] = f.relief[k2] * 0.5;
+            filled++; patched++;
+            break;
+          }
+        }
+      }
+      if (!patched) break;
+    }
+
+    f.filled = filled;
+    f.cellMass = filled > 0 ? bodyMass / filled : 0;
+    f.syncMelt();
+    return f;
+  }
+
   /** Total mass currently in the field. */
   totalMass() { return this.filled * this.cellMass; }
 
