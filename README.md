@@ -15,24 +15,22 @@ sandbox, fonts included.
 ### On GitHub Pages
 
 Because of that, any static host will do and nothing has to be built first.
-**Settings → Pages → Source: GitHub Actions**, and the workflow in
-`.github/workflows/pages.yml` publishes on every push to `main`:
+**Settings → Pages → Deploy from a branch → `main` / `(root)`** and it is live:
 
 > https://idoadjadjajdada.github.io/Helxis/
 
 The capital H matters — Pages paths are case-sensitive.
 
-It uploads `index.html`, `style.css`, `src/` and `fonts/` and nothing else, so
-what is served is the sandbox rather than the workshop around it. Every asset
-reference in the app is relative, which is what lets it sit under `/Helxis/`
-instead of a domain root; the workflow fails the build if an absolute path ever
-creeps in, because that is the one mistake that works locally and 404s only
-once deployed.
+There is no workflow and there should not be one. A build step that deploys a
+filtered copy was tried and removed: Pages was already deploying the branch, so
+the two raced, and whichever finished last decided what the site contained.
+Every asset reference in the app is relative, which is what lets it sit under
+`/Helxis/` rather than a domain root — that is the one mistake to watch for
+here, because an absolute path works perfectly on localhost and 404s only once
+deployed.
 
-Deploying the repository root works too and needs no workflow at all — Settings
-→ Pages → Deploy from a branch → `main` / `(root)`. The `.nojekyll` file at the
-root is there for that case, so Pages serves the files as they are instead of
-running them through Jekyll.
+`.nojekyll` keeps Pages from running the files through Jekyll, so they are
+served exactly as they are in the repository.
 
 ---
 
