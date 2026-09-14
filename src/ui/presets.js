@@ -52,6 +52,62 @@ function recenter(world) {
   }
 }
 
+/**
+ * Saturn's rings, as the rubble they actually are.
+ *
+ * The main rings run from about 1.24 to 2.30 Saturn radii, which is inside the
+ * fluid Roche limit — that is *why* they are rubble and not a moon, and it is
+ * the reason they are built from particles here rather than drawn on. The gap
+ * is the Cassini division at the 2:1 resonance with Mimas.
+ *
+ * `count` scales with how closely the scene is going to be looked at: the
+ * standalone system is worth 260 particles, a whole solar system is not, and
+ * either way they are real bodies on real orbits.
+ */
+export function addSaturnRings(world, saturn, rng, count = 260) {
+  const R = saturn.radius;
+  const added = [];
+  for (let i = 0; i < count; i++) {
+    const a = R * (1.24 + Math.pow(rng(), 0.8) * 1.06);
+    if (a > R * 1.95 && a < R * 2.03) continue;          // Cassini division
+    const th = rng() * TAU;
+    const v = Math.sqrt((G * saturn.mass) / a) * (1 + gaussian(rng) * 0.0015);
+    const b = new Body({
+      name: 'Ring particle', kind: 'debris',
+      x: saturn.x + Math.cos(th) * a, y: saturn.y + Math.sin(th) * a,
+      vx: saturn.vx - Math.sin(th) * v, vy: saturn.vy + Math.cos(th) * v,
+      mass: 1e12 * (0.2 + rng() * 3),
+      composition: { ice: 0.93, silicate: 0.07 },
+      temperature: 90,
+      seed: hashSeed('ring', i),
+    });
+    world.add(b);
+    added.push(b);
+  }
+  return added;
+}
+
+/** Saturn's two headline moons, both well outside the ring system. */
+export function addSaturnMoons(world, saturn, rng) {
+  orbit(world, saturn, 'enceladus', { a: 2.37948e8, e: 0.0047, M: rng() * TAU });
+  orbit(world, saturn, 'titan', { a: 1.22187e9, e: 0.0288, M: rng() * TAU });
+}
+
+/**
+ * What a catalogue body brings with it when you place one.
+ *
+ * Keyed by catalogue id and kept here rather than on the catalogue entry
+ * itself, because building a retinue needs the preset helpers and the
+ * catalogue is what those helpers are built on — putting it the other way
+ * round is an import cycle.
+ */
+export const RETINUES = new Map([
+  ['saturn', (world, saturn, rng) => {
+    addSaturnRings(world, saturn, rng, 180);
+    addSaturnMoons(world, saturn, rng);
+  }],
+]);
+
 // ---------------------------------------------------------------------------
 
 export const PRESETS = [
@@ -76,6 +132,16 @@ export const PRESETS = [
         orbit(world, sun, id, {
           a: a * AU, e, argP: deg(peri), M: deg(L - peri),
         });
+      }
+      // Saturn without its rings is not Saturn. Fewer particles than the
+      // dedicated system — at six astronomical units across they are a few
+      // pixels — but they are the same real bodies on the same real orbits,
+      // and zooming in finds them there.
+      const saturn = world.bodies.find((b) => b.name === 'Saturn');
+      if (saturn) {
+        const rng = makeRng(0x5a7c);
+        addSaturnRings(world, saturn, rng, 90);
+        addSaturnMoons(world, saturn, rng);
       }
       orbit(world, sun, 'ceres', { a: 2.7658 * AU, e: 0.0785, argP: deg(73.6), M: deg(95.99) });
       orbit(world, sun, 'pluto', { a: 39.482 * AU, e: 0.2488, argP: deg(224.07), M: deg(14.86) });
@@ -131,27 +197,8 @@ export const PRESETS = [
     build(world) {
       const s = place(world, 'saturn');
       const rng = makeRng(0x5a7c);
-      const R = s.radius;
-      // The main rings run from about 1.2 to 2.3 Saturn radii — inside the
-      // fluid Roche limit, which is why they are rubble and not a moon.
-      for (let i = 0; i < 260; i++) {
-        const a = R * (1.24 + Math.pow(rng(), 0.8) * 1.06);
-        // The Cassini division, at the 2:1 resonance with Mimas.
-        if (a > R * 1.95 && a < R * 2.03) continue;
-        const th = rng() * TAU;
-        const v = Math.sqrt((G * s.mass) / a) * (1 + gaussian(rng) * 0.0015);
-        world.add(new Body({
-          name: 'Ring particle', kind: 'debris',
-          x: s.x + Math.cos(th) * a, y: s.y + Math.sin(th) * a,
-          vx: s.vx - Math.sin(th) * v, vy: s.vy + Math.cos(th) * v,
-          mass: 1e12 * (0.2 + rng() * 3),
-          composition: { ice: 0.93, silicate: 0.07 },
-          temperature: 90,
-          seed: hashSeed('ring', i),
-        }));
-      }
-      orbit(world, s, 'enceladus', { a: 2.37948e8, e: 0.0047, M: rng() * TAU });
-      orbit(world, s, 'titan', { a: 1.22187e9, e: 0.0288, M: rng() * TAU });
+      addSaturnRings(world, s, rng, 260);
+      addSaturnMoons(world, s, rng);
       recenter(world);
       return { focus: s, zoom: 4.2e8, speed: 3600 };
     },

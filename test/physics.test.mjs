@@ -30,20 +30,35 @@ import { applyToWorld, defaultSettings } from '../src/ui/settings.js';
 let passed = 0, failed = 0;
 const results = [];
 
+/* Progress goes to stderr as it happens. The suite used to print nothing at
+ * all until the last line, so a run that stalled looked exactly like a run
+ * that was merely slow, and there was no way to tell which test was eating
+ * the clock without bisecting the file by hand. */
+const T0 = Date.now();
+let tLast = T0;
+const trace = process.env.QUIET ? () => {} : (line) => {
+  const now = Date.now();
+  process.stderr.write(`${String(((now - T0) / 1000).toFixed(1)).padStart(7)}s ` +
+    `(+${((now - tLast) / 1000).toFixed(1)}s) ${line}\n`);
+  tLast = now;
+};
+
 function check(name, actual, expected, tolerance, unit = '') {
   const err = expected === 0 ? Math.abs(actual) : Math.abs((actual - expected) / expected);
   const ok = err <= tolerance;
   ok ? passed++ : failed++;
-  results.push(
-    `${ok ? '  ok  ' : ' FAIL '} ${name.padEnd(46)} ` +
-    `${fmt(actual)}${unit} vs ${fmt(expected)}${unit}  (${(err * 100).toPrecision(2)}% off, allow ${(tolerance * 100).toPrecision(2)}%)`
-  );
+  const line = `${ok ? '  ok  ' : ' FAIL '} ${name.padEnd(46)} ` +
+    `${fmt(actual)}${unit} vs ${fmt(expected)}${unit}  (${(err * 100).toPrecision(2)}% off, allow ${(tolerance * 100).toPrecision(2)}%)`;
+  results.push(line);
+  trace(line);
   return ok;
 }
 
 function assert(name, condition, detail = '') {
   condition ? passed++ : failed++;
-  results.push(`${condition ? '  ok  ' : ' FAIL '} ${name}${detail ? '  — ' + detail : ''}`);
+  const line = `${condition ? '  ok  ' : ' FAIL '} ${name}${detail ? '  — ' + detail : ''}`;
+  results.push(line);
+  trace(line);
   return condition;
 }
 
@@ -54,7 +69,7 @@ function fmt(v) {
   return v.toPrecision(6);
 }
 
-function section(title) { results.push(`\n${title}`); }
+function section(title) { results.push(`\n${title}`); trace(`\n== ${title}`); }
 
 // ───────────────────────────────────────────────────────────── bodies ──────
 
@@ -1685,6 +1700,58 @@ section('A giant impact makes a moon, at any time scale');
     `${fine.moon.toFixed(2)} vs ${coarse.moon.toFixed(2)} lunar masses`);
   assert('and does not shatter the debris either', coarse.shattered === 0,
     `${coarse.shattered} disruptive events at 200-day chunks`);
+}
+
+section('A giant impact makes a moon out of parcels');
+{
+  // The same event as the section above, but resolved as material rather than
+  // as an outcome: the preset, the parcel path, end to end.
+  //
+  // It used to produce a moon in one run out of four, and that one was 0.37
+  // lunar masses -- the other three swallowed Theia whole and left a single
+  // body. What was missing was differentiation. With the impactor's metal
+  // stopping wherever it landed, the debris thrown beyond the Roche limit
+  // carried the iron with it and fell straight back; once the metal sinks, the
+  // material left in orbit is mantle, and mantle is what the Moon is made of.
+  //
+  // So the mass and the composition are one result, not two: an iron-poor moon
+  // is the evidence that it formed the way it is supposed to.
+  const w = new World();
+  const st = defaultSettings();
+  applyToWorld(st, w);
+  loadPreset(w, 'giant-impact');
+  let guard = 0;
+  while (!(w.grains && w.grains.n > 0) && guard++ < 200000) w.advance(60);
+  assert('the impact shatters both bodies into parcels', !!(w.grains && w.grains.n > 0),
+    `${w.grains ? w.grains.n : 0} parcels`);
+  let frames = 0;
+  while (w.grains && w.grains.n > 0 && frames++ < 20000) w.advance(DAY / 60);
+
+  const bodies = w.bodies.slice().sort((a, b) => b.mass - a.mass);
+  const planet = bodies[0];
+  const moon = bodies[1] || null;
+  const ironOf = (b) => {
+    const c = (b && b.composition) || {};
+    let tot = 0;
+    for (const k in c) tot += c[k];
+    return tot > 0 ? (c.iron || 0) / tot : 0;
+  };
+  assert('and the parcels all condense again', !w.grains || w.grains.n === 0,
+    `${w.grains ? w.grains.n : 0} left after ${frames} frames`);
+  assert('leaving a planet of about an Earth',
+    planet && planet.mass > M_EARTH * 0.95 && planet.mass < M_EARTH * 1.25,
+    planet ? `${(planet.mass / M_EARTH).toFixed(3)} M_E` : 'no planet');
+  assert('and a moon of about a lunar mass in orbit',
+    !!moon && moon.mass > M_MOON * 0.4 && moon.mass < M_MOON * 3,
+    moon ? `${(moon.mass / M_MOON).toFixed(2)} lunar masses` : 'no second body at all');
+  if (moon) {
+    const bound = Math.hypot(moon.vx - planet.vx, moon.vy - planet.vy)
+      < Math.sqrt((2 * G * planet.mass) / Math.hypot(moon.x - planet.x, moon.y - planet.y));
+    assert('bound to the planet rather than leaving', bound, `${bound}`);
+    assert('and made of mantle: iron-poor next to the planet it came off',
+      ironOf(moon) < ironOf(planet) * 0.6,
+      `moon ${(ironOf(moon) * 100).toFixed(1)}% iron vs planet ${(ironOf(planet) * 100).toFixed(1)}%`);
+  }
 }
 
 section('Matter, as parcels');

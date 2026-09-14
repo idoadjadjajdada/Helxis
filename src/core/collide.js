@@ -180,26 +180,31 @@ function ringLayout(radii, clearance, startAngle = 0, span = TAU) {
  * asteroids once became twelve hundred fragments in seven thousand
  * interpenetrating pairs.
  */
-function cloudLayout(radii, R0, rng) {
+function cloudLayout(radii, rInner, rng) {
   const n = radii.length;
   const order = radii.map((r, i) => i).sort((i, j) => radii[j] - radii[i]);
-  // Start from a disc that can hold the pieces at a comfortable packing
-  // fraction, never smaller than the body they came out of.
   let area = 0, max = 0;
   for (const r of radii) { area += r * r; if (r > max) max = r; }
-  let R = Math.max(R0, max, Math.sqrt(area / 0.40));
+  // The pieces go in the annulus OUTSIDE whatever survived. `rInner` is the
+  // survivor's clearance, not merely a smallest radius: filling the whole disc
+  // instead drops the debris straight through the remnant sitting at the
+  // centre of it, which is 2739 interpenetrating pairs and a swarm that the
+  // next contact pass shatters all over again.
+  let R = Math.sqrt(rInner * rInner + area / 0.40) + max;
   const at = new Array(n);
 
-  for (let grow = 0; grow < 10; grow++) {
+  for (let grow = 0; grow < 12; grow++) {
     at.fill(undefined);
     let all = true;
     for (let k = 0; k < n; k++) {
       const i = order[k], ri = radii[i];
-      const reach = Math.max(R - ri, 1e-9);
+      const lo = rInner + ri, hi = R - ri;
+      if (hi <= lo) { all = false; break; }
       let placed = false;
-      for (let t = 0; t < 160; t++) {
-        // uniform by area, so the cloud is not centre-heavy
-        const q = reach * Math.sqrt(rng()), th = TAU * rng();
+      for (let t = 0; t < 120; t++) {
+        // uniform by area across the annulus, so it is not inner-heavy
+        const q = Math.sqrt(lo * lo + rng() * (hi * hi - lo * lo));
+        const th = TAU * rng();
         const x = Math.cos(th) * q, y = Math.sin(th) * q;
         let clear = true;
         for (let m = 0; m < k; m++) {
@@ -213,12 +218,12 @@ function cloudLayout(radii, R0, rng) {
       if (!placed) { all = false; break; }
     }
     if (all) return { R, at };
-    R *= 1.3;
+    R *= 1.25;
   }
 
-  // The disc genuinely will not hold them: fall back to the ring, which always
-  // fits, rather than returning pieces born inside one another.
-  const ring = ringLayout(radii, R0, rng() * TAU);
+  // The annulus genuinely will not hold them: fall back to the ring, which
+  // always fits, rather than returning pieces born inside one another.
+  const ring = ringLayout(radii, rInner, rng() * TAU);
   for (let i = 0; i < n; i++) {
     at[i] = { x: Math.cos(ring.angles[i]) * ring.ringR, y: Math.sin(ring.angles[i]) * ring.ringR };
   }

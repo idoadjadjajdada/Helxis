@@ -1,5 +1,6 @@
 import { G, C, clamp, formatMass } from './core/const.js';
 import { World } from './core/world.js';
+import { makeRng, hashSeed } from './core/rng.js';
 import { dominantAttractor } from './core/kepler.js';
 import { Camera } from './render/camera.js';
 import { Renderer } from './render/renderer.js';
@@ -7,8 +8,22 @@ import { Effects } from './render/effects.js';
 import { clearTextureCache } from './render/texture.js';
 import { ToolController, toolRadiusPixels, toolRingColor, pickBody, TOOLS } from './ui/tools.js';
 import { UI, TIME_SCALES } from './ui/ui.js';
+
+/* The clock's range, as simulated seconds per real second: a tenth of real
+ * time at the bottom, a million years a second at the top -- the same span the
+ * ladder covered, now continuous between the rungs. */
+const SPEED_MIN = TIME_SCALES[0].value;
+const SPEED_MAX = TIME_SCALES[TIME_SCALES.length - 1].value;
+function nearestSpeedIndex(v) {
+  let best = 0, bestErr = Infinity;
+  for (let i = 0; i < TIME_SCALES.length; i++) {
+    const err = Math.abs(Math.log(TIME_SCALES[i].value) - Math.log(Math.max(v, 1e-12)));
+    if (err < bestErr) { bestErr = err; best = i; }
+  }
+  return best;
+}
 import { instantiate } from './ui/catalog.js';
-import { loadPreset } from './ui/presets.js';
+import { loadPreset, RETINUES } from './ui/presets.js';
 import {
   defaultSettings, applyToWorld, loadSettings, saveSettings, SETTING_DEFS,
 } from './ui/settings.js';
@@ -32,6 +47,7 @@ class App {
     // Realtime is technically correct and shows nothing moving; a day a second
     // puts the inner planets in visible motion the moment the page opens.
     this.speedIndex = TIME_SCALES.findIndex((s) => s.value === 86400);
+    this.speedValue = TIME_SCALES[this.speedIndex].value;
     this.massScale = 1;
     this.armed = null;
     this.fps = 60;
@@ -43,6 +59,7 @@ class App {
     this.placing = null;
 
     this.ui = new UI(this);
+    this.ui.updateSpeed(this);
     this.applySettings();
     this.bindInput();
 
@@ -287,15 +304,38 @@ class App {
     document.getElementById('time-play').classList.toggle('primary', !this.paused);
   }
 
+  /**
+   * The clock is a continuous quantity now, and TIME_SCALES is a ladder of
+   * round numbers laid over it rather than the only places it can stand.
+   * `speedIndex` is kept in step so the -/+ buttons and the , and . keys still
+   * walk the ladder, and so a preset asking for "1 day/s" still gets it.
+   */
   setSpeedIndex(i) {
-    this.speedIndex = clamp(i, 0, TIME_SCALES.length - 1);
-    document.getElementById('time-scale').value = String(this.speedIndex);
+    const k = clamp(i, 0, TIME_SCALES.length - 1);
+    this.setSpeed(TIME_SCALES[k].value, k);
+  }
+
+  setSpeed(value, index) {
+    const v = clamp(Number(value) || 0, SPEED_MIN, SPEED_MAX);
+    this.speedValue = v;
+    this.speedIndex = index === undefined ? nearestSpeedIndex(v) : index;
+    if (this.ui) this.ui.updateSpeed(this);
     if (this.paused) this.togglePause();
   }
 
-  nudgeSpeed(dir) { this.setSpeedIndex(this.speedIndex + dir); }
+  /** Walk the ladder from wherever the slider has left us. */
+  nudgeSpeed(dir) {
+    const here = nearestSpeedIndex(this.speedValue);
+    const exact = Math.abs(TIME_SCALES[here].value - this.speedValue) < this.speedValue * 1e-6;
+    // Off a rung, a nudge lands on the next rung in that direction rather than
+    // skipping over the one you are standing next to.
+    let next = exact ? here + dir
+      : dir > 0 ? (TIME_SCALES[here].value > this.speedValue ? here : here + 1)
+                : (TIME_SCALES[here].value < this.speedValue ? here : here - 1);
+    this.setSpeedIndex(next);
+  }
 
-  get timeScale() { return TIME_SCALES[this.speedIndex].value; }
+  get timeScale() { return this.speedValue; }
 
   /** One frame's worth of simulation while paused. */
   stepFrame() {
@@ -373,6 +413,20 @@ class App {
     }
 
     this.world.add(body);
+
+    // Some bodies do not arrive alone. Saturn without its rings is not Saturn,
+    // and they are real particles on real orbits, so they come with it —
+    // placed AFTER the planet has its final velocity, because they are built
+    // relative to it and a ring built around a body that then gets launched
+    // stays behind.
+    const retinue = this.armed && RETINUES.get(this.armed.id);
+    if (retinue) {
+      const rng = makeRng(hashSeed(body.seed, 'retinue'));
+      try { retinue(this.world, body, rng); } catch (err) {
+        this.ui.toast(`Could not build ${body.name}'s system: ${err.message}`);
+      }
+    }
+
     this.select(body);
     this.ui.toast(`${body.name} added`);
     if (!this.keys.shift) this.ui.disarm();

@@ -1,4 +1,4 @@
-import { TAU, formatDistance, formatMass, formatSpeed, formatTime } from '../core/const.js';
+import { TAU, formatDistance, formatMass, formatRate, formatSpeed, formatTime } from '../core/const.js';
 import { MATERIALS } from '../core/materials.js';
 import { CATEGORIES, CATALOG, searchCatalog, thumbnailBody, CATALOG_BY_ID } from './catalog.js';
 import { PRESETS } from './presets.js';
@@ -68,10 +68,33 @@ export class UI {
   // --- construction ---------------------------------------------------------
 
   buildTransport() {
-    const sel = $('time-scale');
-    sel.innerHTML = TIME_SCALES
-      .map((s, i) => `<option value="${i}">${s.label}</option>`).join('');
-    sel.value = String(TIME_SCALES.findIndex((s) => s.value === 86400));
+    // Round numbers as tick buttons under the slider: the ladder is still what
+    // anyone wants most of the time, it just is not the only place the clock
+    // can stand any more.
+    const ticks = ['1× realtime', '1 hour/s', '1 day/s', '1 year/s', '1 kyr/s', '1 Myr/s'];
+    $('speed-ticks').innerHTML = ticks.map((label) => {
+      const i = TIME_SCALES.findIndex((s) => s.label === label);
+      const short = label.replace('1× realtime', '1×').replace('1 ', '').replace('/s', '');
+      return `<button type="button" data-index="${i}" title="${label}">${short}</button>`;
+    }).join('');
+  }
+
+  /** Slider position is log10 of the rate, so a decade is a fixed distance. */
+  updateSpeed(app) {
+    if (!document.getElementById('speed-slider')) return;
+    const v = app.speedValue;
+    $('time-scale').textContent = formatRate(v);
+    $('speed-readout').textContent = formatRate(v);
+    const slider = $('speed-slider');
+    const pos = Math.log10(Math.max(v, 1e-12)).toFixed(2);
+    if (slider.value !== pos) slider.value = pos;
+  }
+
+  toggleSpeedPop(force) {
+    const pop = $('speed-pop');
+    const open = force === undefined ? pop.hidden : force;
+    pop.hidden = !open;
+    $('time-scale').setAttribute('aria-expanded', String(open));
   }
 
   buildPresetSelect() {
@@ -173,7 +196,24 @@ export class UI {
     $('time-faster').addEventListener('click', () => app.nudgeSpeed(1));
     $('time-step').addEventListener('click', () => app.stepFrame());
     $('time-reset').addEventListener('click', () => app.restart());
-    $('time-scale').addEventListener('change', (e) => app.setSpeedIndex(Number(e.target.value)));
+    $('time-scale').addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.toggleSpeedPop();
+    });
+    $('speed-slider').addEventListener('input', (e) => {
+      app.setSpeed(Math.pow(10, Number(e.target.value)));
+    });
+    $('speed-ticks').addEventListener('click', (e) => {
+      const b = e.target.closest('button[data-index]');
+      if (b) app.setSpeedIndex(Number(b.dataset.index));
+    });
+    $('speed-pop').addEventListener('click', (e) => e.stopPropagation());
+    // Anywhere else puts it away, including Escape, the way the other
+    // transient panels here behave.
+    document.addEventListener('click', () => this.toggleSpeedPop(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') this.toggleSpeedPop(false);
+    });
 
     $('preset-select').addEventListener('change', (e) => {
       if (e.target.value) {
@@ -452,6 +492,24 @@ export class UI {
     $('status-state').textContent = app.paused ? 'PAUSED' : app.world.throttled ? 'TIME LIMITED' : 'SIMULATING';
     $('status-bodies').textContent = `${app.world.bodies.length} ${app.world.bodies.length === 1 ? 'body' : 'bodies'}`;
     $('status-fps').textContent = `${Math.round(app.fps)} FPS`;
+
+    // Say what the clock is actually delivering. A collision holds it down on
+    // purpose, and with nothing saying so the speed control just looked broken.
+    const note = $('speed-note');
+    if (note) {
+      const parcels = app.world.grains ? app.world.grains.n : 0;
+      if (!app.paused && app.world.throttled && parcels > 0) {
+        note.className = 'speed-note limited';
+        note.textContent = `Holding at collision speed — ${parcels} parcels in flight. `
+          + `Raise the physics budget in Settings to push through faster.`;
+      } else if (!app.paused && app.world.throttled) {
+        note.className = 'speed-note limited';
+        note.textContent = 'Time limited: the scene needs more substeps than the frame budget allows.';
+      } else {
+        note.className = 'speed-note';
+        note.textContent = '';
+      }
+    }
 
     const showDiag = app.settings.showDiagnostics;
     const diag = $('status-diag');

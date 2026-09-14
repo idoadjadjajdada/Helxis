@@ -34,6 +34,11 @@ const DEFAULTS = {
   integrator: 'yoshida4',  // 'yoshida4' (4th order) or 'verlet' (2nd, cheaper)
   maxSubsteps: 600,        // hard ceiling on substeps in one advance()
   frameBudgetMs: 11,       // wall-clock spend per advance(), before we stop
+  // What a fast clock may buy while a collision is in flight. The parcel
+  // substep is fixed by stability and must never grow, but how MANY substeps
+  // a frame takes is a spending decision, not a physical one -- so the speed
+  // control is allowed to trade frame rate for collision time up to here.
+  grainBudgetMaxMs: 70,
   collisions: true,
   tidalDisruption: true,
   relativity: false,       // 1PN perihelion precession
@@ -456,7 +461,7 @@ export class World {
     if (this.bodies.length === 0) {
       // Parcels only: no orbits to integrate, so hand the whole step to them.
       this._frame++;
-      const used = this.stepGrains(seconds) || 0;
+      const used = this.stepGrains(seconds, this.grainBudgetMs(this.grains, seconds)) || 0;
       this.throttled = used < seconds - 1e-9;
       this.time += used;
       this.substepsTaken = this.grainSubsteps || 0;
@@ -476,18 +481,26 @@ export class World {
     // a second there is no step that both advances the orbit and resolves a
     // contact, and the honest answer is that the interesting thing is the
     // collision. The status line says TIME LIMITED while this holds.
+    let grainThrottled = false;
+    let grainBudget = 0;
     if (this.grains && this.grains.n > 0) {
       // The bodies advance by however much the parcels manage, so the two never
-      // drift apart. That does mean the clock slows to collision speed while a
-      // collision is happening, which is the point of watching one.
-      const cap = this.grainCapacity(this.grains);
-      if (seconds > cap) { seconds = cap; this.throttled = true; }
+      // drift apart. That does mean the clock comes down to collision speed
+      // while a collision is happening, which is the point of watching one --
+      // but the speed control now decides how far down, instead of it being a
+      // fixed ten milliseconds of work whatever was asked for.
+      grainBudget = this.grainBudgetMs(this.grains, seconds);
+      const capSeconds = this.grainCapacity(this.grains, seconds);
+      if (seconds > capSeconds) { seconds = capSeconds; grainThrottled = true; }
     }
     let remaining = seconds;
     let taken = 0;
     const cap = this.settings.maxSubsteps;
     const budgetMs = this.settings.frameBudgetMs || 11;
-    this.throttled = false;
+    // Set BEFORE the grain clamp is folded in, not after: assigning false here
+    // is what threw away the flag the clamp had just raised, so a collision
+    // held the clock down and the status line went on saying SIMULATING.
+    this.throttled = grainThrottled;
 
     // Two limits, and the wall clock is the one that usually bites. Capping by
     // substep count alone means a heavy scene either runs at 6 fps or takes
@@ -529,7 +542,7 @@ export class World {
 
     this.substepsTaken = taken;
     if (this.settings.thermal) this.thermalPass(seconds - remaining);
-    if (this.grains && this.grains.n > 0) this.stepGrains(seconds - remaining);
+    if (this.grains && this.grains.n > 0) this.stepGrains(seconds - remaining, grainBudget);
     this.relaxFields(seconds - remaining);
     this.updateTrails();
     this.measureEnergy();
@@ -984,7 +997,7 @@ export class World {
    * time, and not because anything decided it should. Until then it stays
    * parcels, which is why a planet mid-impact is the wrong shape.
    */
-  stepGrains(dt) {
+  stepGrains(dt, budgetMs) {
     const g = this.grains;
     if (!g || g.n === 0) { this.grainsActive = false; return; }
 
@@ -1018,7 +1031,7 @@ export class World {
     // meeting at 1.7 escape velocities blew apart into a cloud that left the
     // screen, when the same collision run at a safe step accretes.
     const h = this.grainStep(g);
-    const deadline = now() + Math.max(3, (this.settings.frameBudgetMs || 11) * 0.9);
+    const deadline = now() + (budgetMs || this.grainBudgetMs(g, dt));
     // The time scale has to reach the parcels, and the work has to stay
     // bounded.
     //
@@ -1039,7 +1052,11 @@ export class World {
     ));
     let taken = 0;
     for (let s = 0; s < want; s++) {
-      g.step(h, { external, equilibriumT: 2.725 });
+      g.step(h, {
+        external,
+        equilibriumT: 2.725,
+        differentiate: this.settings.differentiate != null ? this.settings.differentiate : 1,
+      });
       taken++;
       if (now() > deadline) break;
     }
@@ -1064,10 +1081,33 @@ export class World {
     return this.grainSeconds;
   }
 
-  /** How much simulated time the parcels can cover in one frame's budget. */
-  grainCapacity(g) {
+  /**
+   * How much wall clock the parcels may spend this frame.
+   *
+   * It used to be a flat ten milliseconds whatever the clock was set to, and
+   * that is why the speed control did nothing at all during a collision: the
+   * frame's simulated time was clamped to what ten milliseconds of parcel work
+   * covered, and asking for a thousand years a second bought not one extra
+   * substep. The substep itself is fixed by stability and still is -- what the
+   * speed control now buys is more of them per frame, which costs frame rate
+   * and nothing else. Asking for more than the ceiling is still refused, and
+   * `throttled` says so.
+   */
+  grainBudgetMs(g, wanted) {
+    const base = Math.max(3, (this.settings.frameBudgetMs || 11) * 0.9);
+    const ceiling = Math.max(base, this.settings.grainBudgetMaxMs || 70);
+    if (!g || g.n === 0 || !(wanted > 0)) return base;
+    const h = this.grainStep(g);
+    if (!(h > 0)) return base;
     const per = Math.max(g.n, 1) * 3e-3;           // ms per substep, measured
-    const budget = Math.max(3, (this.settings.frameBudgetMs || 11) * 0.9);
+    const needed = (wanted / h) * per;
+    return Math.min(ceiling, Math.max(base, needed));
+  }
+
+  /** How much simulated time the parcels can cover in this frame's budget. */
+  grainCapacity(g, wanted) {
+    const per = Math.max(g.n, 1) * 3e-3;           // ms per substep, measured
+    const budget = this.grainBudgetMs(g, wanted);
     return this.grainStep(g) * Math.max(1, Math.floor(budget / Math.max(per, 1e-3)));
   }
 

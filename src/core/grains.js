@@ -39,6 +39,12 @@ const STRENGTH = new Float32Array(MATERIAL_KEYS.map((k) => MATERIALS[k].strength
  */
 const COHESION_SCALE = 4e-9;
 
+/**
+ * How fast denser material sinks through molten lighter material, as a
+ * fraction of the free-fall speed across one parcel. See `settle`.
+ */
+const SETTLE_RATE = 4.8;
+
 export class GrainSystem {
   constructor(opts = {}) {
     this.cap = opts.cap || 6000;
@@ -214,6 +220,109 @@ export class GrainSystem {
 
     // --- viscosity ----------------------------------------------------------
     this.viscosity(opts);
+
+    // --- differentiation ----------------------------------------------------
+    // After viscosity, because sinking through a melt is a thing that happens
+    // against its drag, not instead of it.
+    this.settle(dt, opts);
+  }
+
+  /**
+   * Denser material sinks.
+   *
+   * A giant impact that leaves the impactor's iron lying on the surface is not
+   * a giant impact. Theia's core sank through the mantle and merged with
+   * Earth's — that is why Earth's core is the size it is, and why the Moon is
+   * made of mantle and almost no iron. Without this the impactor simply coats
+   * the target: its metal stops wherever it happened to land, and the result
+   * reads as one planet wearing another.
+   *
+   * Nothing decides that outcome here. Neighbouring parcels are exchanged
+   * pairwise — the denser one moves along local gravity, the lighter one moves
+   * against it — and only while both are molten enough to flow. Freeze the
+   * melt and the sorting stops wherever it had got to, which is exactly what a
+   * part-differentiated body is.
+   *
+   * Two properties this has to have, both learned the hard way elsewhere:
+   * it is a terminal SPEED rather than an acceleration, because an
+   * acceleration applied every step integrates without bound and blows the
+   * clump apart; and it is pairwise and mass-weighted, so momentum in equals
+   * momentum out — sorting is internal rearrangement and must not move the
+   * body it happens inside.
+   */
+  settle(dt, opts) {
+    const n = this.n;
+    const grid = this._grid;
+    if (!grid || n === 0) return;
+    const strength = opts.differentiate != null ? opts.differentiate : 1;
+    if (strength <= 0) return;
+    const ax = this._ax, ay = this._ay;
+    if (!ax) return;
+    const packed = this._nbCount;
+
+    const { minX, minY, cols, rows, size } = grid;
+    for (let i = 0; i < n; i++) {
+      if (this.melt[i] < 0.2) continue;
+      // "Down" is wherever this parcel's gravity points, which is the body's
+      // own centre when it is inside one.
+      const gx = ax[i], gy = ay[i];
+      const gmag = Math.hypot(gx, gy);
+      if (!(gmag > 0)) continue;
+      const ux = gx / gmag, uy = gy / gmag;
+      // The free-fall speed across a parcel: the natural scale for how fast
+      // one can sink past its neighbour.
+      const vScale = Math.sqrt(gmag * this.r[i]);
+      const ci = clamp(Math.floor((this.x[i] - minX) / size), 0, cols - 1);
+      const cj = clamp(Math.floor((this.y[i] - minY) / size), 0, rows - 1);
+      for (let oy = -1; oy <= 1; oy++) {
+        for (let ox = -1; ox <= 1; ox++) {
+          const nx = ci + ox, ny = cj + oy;
+          if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+          for (let j = this._heads[ny * cols + nx]; j !== -1; j = this._next[j]) {
+            if (j <= i || this.melt[j] < 0.2) continue;
+            const dx = this.x[j] - this.x[i], dy = this.y[j] - this.y[i];
+            const rr = (this.r[i] + this.r[j]) * 1.3;
+            const d2 = dx * dx + dy * dy;
+            if (d2 > rr * rr) continue;
+            const rhoI = RHO[this.mat[i]], rhoJ = RHO[this.mat[j]];
+            const mean = (rhoI + rhoJ) * 0.5;
+            if (!(mean > 0)) continue;
+            const contrast = (rhoI - rhoJ) / mean;
+            if (Math.abs(contrast) < 1e-3) continue;
+            const w = 1 - Math.sqrt(d2) / rr;
+            const soft = Math.min(this.melt[i], this.melt[j]);
+            // The same bulk-property argument viscosity makes: two droplets
+            // passing each other in vacuum do not sort, and applying this to
+            // thrown debris would eat the disc the impact just made.
+            const dens = packed
+              ? Math.min(1, (Math.min(packed[i], packed[j]) || 0) / 5)
+              : 1;
+            if (dens <= 0) continue;
+            // How fast the pair should be sliding past each other along
+            // "down", with the denser parcel on the way in.
+            //
+            // SETTLE_RATE is chosen, not derived, and it is worth saying why.
+            // Real core formation runs on the molecular viscosity of a magma
+            // ocean and takes ten to a hundred thousand years; this sandbox
+            // never simulates more than days of parcel time, and a parcel is a
+            // hundred-kilometre chunk whose effective viscosity is nothing
+            // like the molecular one anyway. So the rate is set to finish the
+            // sorting while the melt is still molten, which is the behaviour
+            // being modelled. Measured on a blob with its iron deliberately on
+            // the outside, the iron's mean radius goes from 0.87 to 0.59 of
+            // the blob's, and the blob puffs about a quarter doing it -- that
+            // expansion is the overturn doing work, not an instability.
+            const target = strength * SETTLE_RATE * contrast * soft * dens * vScale;
+            const rel = (this.vx[j] - this.vx[i]) * ux + (this.vy[j] - this.vy[i]) * uy;
+            const dv = (-target - rel) * Math.min(1, dt * 6 * w);
+            const mi = this.mass[i], mj = this.mass[j];
+            const share = dv / (mi + mj);
+            this.vx[i] -= ux * share * mj; this.vy[i] -= uy * share * mj;
+            this.vx[j] += ux * share * mi; this.vy[j] += uy * share * mi;
+          }
+        }
+      }
+    }
   }
 
   /** Accelerations from the parcels' own gravity. */
