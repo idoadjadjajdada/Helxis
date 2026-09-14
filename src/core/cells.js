@@ -606,6 +606,15 @@ export class MaterialField {
     // Denser material above lighter material, with both soft enough to move,
     // swaps. Repeated over many steps this is differentiation, and after a
     // merge it is what buries the impactor's iron in the target's core.
+    // One swap per cell per call, and the rate is therefore the grid's rather
+    // than the melt model's -- a cell moves at most one step toward the centre
+    // however runny it is. Scaling the number of sweeps with melt and the step
+    // was tried and reverted: the step here is dt over the body's own cooling
+    // time, and measured across a real magma ocean it runs from 6e-10 to at
+    // most 5e-3, so any such factor rounds to one every single time. What
+    // actually limits how far a body differentiates is how many calls it gets
+    // before it freezes, which is the honest answer and is why a world that
+    // cools quickly stays part-sorted.
     const parity = (this.revision++) & 1;
     for (let j = 0; j < n; j++) {
       for (let i = (j + parity) & 1; i < n; i += 2) {

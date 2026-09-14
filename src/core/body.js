@@ -534,6 +534,64 @@ export class Body {
    * anything; below a thousand cells a body is a handful of pixels on screen
    * and the field would cost more than it shows.
    */
+  /**
+   * How readily life could get going here, as a fraction from 0 to 1.
+   *
+   * Every term is read off what the body actually is — its temperature, what
+   * is on its surface, how hard it pulls, whether the ground has stopped being
+   * lava — and they multiply, because these are requirements rather than
+   * points to be traded off. A world can be perfect in four of them and still
+   * be at 4000 K, and no amount of water helps it.
+   *
+   * It is a habitability index and not a probability. Nobody knows the
+   * probability. What this says is how far the conditions here are from the
+   * one set of conditions we have ever seen life arise in, which is a real
+   * statement about the body and an honest thing to put a number on. The
+   * scale is anchored so that present-day Earth reads 100%.
+   */
+  lifePossibility() {
+    if (this.kind === 'star' || this.kind === 'bh' || this.kind === 'ns'
+        || this.kind === 'wd' || this.kind === 'gasgiant') return 0;
+
+    const T = this.temperature;
+    if (!isFinite(T)) return 0;
+
+    // Liquid water. A bell about the one temperature we know this works at,
+    // and asymmetric: cold is survivable in a way hot is not, because there is
+    // ice to shelter under and brine stays liquid below freezing, while above
+    // about 400 K proteins come apart whatever you do. It decays rather than
+    // cutting off, so a marginal world reads as marginal instead of as
+    // impossible -- Mars is the case that matters, cold on average and warm at
+    // the equator in summer, and a hard edge put it at zero.
+    const width = T < 288 ? 55 : 45;
+    const temp = Math.exp(-Math.pow((T - 288) / width, 2));
+    if (temp < 1e-4) return 0;
+
+    // Something for it to be dissolved in. A trace is enough to matter and
+    // more is not better, so it saturates early.
+    const surf = this.crust || this.surfaceComposition || this.composition || {};
+    const water = (surf.water || 0) + (surf.ice || 0);
+    const wet = clamp(water / 0.04, 0, 1);
+
+    // Enough gravity to keep an atmosphere, not so much that it keeps
+    // hydrogen. Earth is 9.8; the band is about a tenth of that to three
+    // times it.
+    const g = this.radius > 0 ? (G * this.mass) / (this.radius * this.radius) : 0;
+    const grav = clamp((g - 0.8) / 2.2, 0, 1) * clamp((30 - g) / 12, 0, 1);
+
+    // Rock to stand on, rather than a ball of ice or a ball of gas.
+    const rock = clamp(((this.composition || {}).silicate || 0)
+      + ((this.composition || {}).basalt || 0) + ((this.composition || {}).olivine || 0)
+      + ((this.composition || {}).granite || 0) + ((this.composition || {}).feldspar || 0), 0, 1);
+    const ground = clamp(rock / 0.35, 0, 1);
+
+    // And it has to have settled down. A magma ocean is not a habitat, and a
+    // world that is still 40% molten is not one either.
+    const calm = this.field ? clamp(1 - this.field.moltenFraction * 2.5, 0, 1) : 1;
+
+    return clamp(temp * wet * grav * ground * calm, 0, 1);
+  }
+
   ensureField() {
     if (this.field) return this.field;
     if (!this.canHoldField()) return null;

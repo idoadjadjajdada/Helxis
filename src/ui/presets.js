@@ -53,33 +53,66 @@ function recenter(world) {
 }
 
 /**
- * Saturn's rings, as the rubble they actually are.
+ * The ringed giants, as the rubble they actually are.
  *
- * The main rings run from about 1.24 to 2.30 Saturn radii, which is inside the
- * fluid Roche limit — that is *why* they are rubble and not a moon, and it is
- * the reason they are built from particles here rather than drawn on. The gap
- * is the Cassini division at the 2:1 resonance with Mimas.
+ * All four of them have rings; only Saturn's are bright. The numbers are the
+ * real ones, in planetary radii, and they all sit inside or near the fluid
+ * Roche limit — which is *why* they are rubble rather than moons, and the
+ * reason they are built from particles here rather than drawn on.
  *
- * `count` scales with how closely the scene is going to be looked at: the
- * standalone system is worth 260 particles, a whole solar system is not, and
+ * `mass` is per particle, and it is what makes Jupiter's and Neptune's rings
+ * behave as the dust they are next to Saturn's boulders.
+ */
+export const RING_SYSTEMS = {
+  jupiter: {
+    inner: 1.72, outer: 1.81, gap: null, mass: 2e6,
+    composition: { silicate: 0.75, carbon: 0.25 },
+    note: 'Dust knocked off Metis and Adrastea. Invisible from Earth.',
+  },
+  saturn: {
+    // The main rings, and the Cassini division at the 2:1 resonance with Mimas.
+    inner: 1.24, outer: 2.30, gap: [1.95, 2.03], mass: 1e12,
+    composition: { ice: 0.93, silicate: 0.07 },
+    note: 'Ice boulders, and bright enough to have been seen in 1610.',
+  },
+  uranus: {
+    // Thirteen narrow rings; epsilon, the widest, sits at 2.006 radii.
+    inner: 1.60, outer: 2.01, gap: null, mass: 4e9,
+    composition: { carbon: 0.55, ice: 0.30, silicate: 0.15 },
+    note: 'Dark as charcoal, and narrow. Found in 1977 by an occultation.',
+  },
+  neptune: {
+    inner: 1.69, outer: 2.55, gap: [2.10, 2.35], mass: 8e7,
+    composition: { carbon: 0.60, ice: 0.40, silicate: 0.00 },
+    note: 'Clumpy: the Adams ring is mostly arcs rather than a whole ring.',
+  },
+};
+
+/**
+ * Lay a ring system out around a planet.
+ *
+ * `count` scales with how closely the scene will be looked at: a dedicated
+ * system is worth several hundred particles, a whole solar system is not, and
  * either way they are real bodies on real orbits.
  */
-export function addSaturnRings(world, saturn, rng, count = 260) {
-  const R = saturn.radius;
+export function addRings(world, planet, rng, count, spec) {
+  const s = spec || RING_SYSTEMS[String(planet.name || '').toLowerCase()];
+  if (!s || !(count > 0)) return [];
+  const R = planet.radius;
   const added = [];
   for (let i = 0; i < count; i++) {
-    const a = R * (1.24 + Math.pow(rng(), 0.8) * 1.06);
-    if (a > R * 1.95 && a < R * 2.03) continue;          // Cassini division
+    const a = R * (s.inner + Math.pow(rng(), 0.8) * (s.outer - s.inner));
+    if (s.gap && a > R * s.gap[0] && a < R * s.gap[1]) continue;
     const th = rng() * TAU;
-    const v = Math.sqrt((G * saturn.mass) / a) * (1 + gaussian(rng) * 0.0015);
+    const v = Math.sqrt((G * planet.mass) / a) * (1 + gaussian(rng) * 0.0015);
     const b = new Body({
       name: 'Ring particle', kind: 'debris',
-      x: saturn.x + Math.cos(th) * a, y: saturn.y + Math.sin(th) * a,
-      vx: saturn.vx - Math.sin(th) * v, vy: saturn.vy + Math.cos(th) * v,
-      mass: 1e12 * (0.2 + rng() * 3),
-      composition: { ice: 0.93, silicate: 0.07 },
-      temperature: 90,
-      seed: hashSeed('ring', i),
+      x: planet.x + Math.cos(th) * a, y: planet.y + Math.sin(th) * a,
+      vx: planet.vx - Math.sin(th) * v, vy: planet.vy + Math.cos(th) * v,
+      mass: s.mass * (0.2 + rng() * 3),
+      composition: s.composition,
+      temperature: Math.max(30, planet.temperature),
+      seed: hashSeed('ring', planet.name, i),
     });
     world.add(b);
     added.push(b);
@@ -87,11 +120,45 @@ export function addSaturnRings(world, saturn, rng, count = 260) {
   return added;
 }
 
-/** Saturn's two headline moons, both well outside the ring system. */
-export function addSaturnMoons(world, saturn, rng) {
-  orbit(world, saturn, 'enceladus', { a: 2.37948e8, e: 0.0047, M: rng() * TAU });
-  orbit(world, saturn, 'titan', { a: 1.22187e9, e: 0.0288, M: rng() * TAU });
+/** Kept for the dedicated Saturn preset, which is about Saturn. */
+export function addSaturnRings(world, saturn, rng, count = 260) {
+  return addRings(world, saturn, rng, count, RING_SYSTEMS.saturn);
 }
+
+/**
+ * The moons of the outer planets, by primary, as real orbits.
+ *
+ * Saturn gets the seven classical moons rather than Titan and a token second:
+ * "Saturn and its moons" that means two of them is not Saturn's system.
+ */
+export const MOON_SYSTEMS = {
+  jupiter: [
+    ['io', 4.2180e8, 0.0041], ['europa', 6.7110e8, 0.0094],
+    ['ganymede', 1.07040e9, 0.0013], ['callisto', 1.88270e9, 0.0074],
+  ],
+  saturn: [
+    ['mimas', 1.8552e8, 0.0196], ['enceladus', 2.37948e8, 0.0047],
+    ['tethys', 2.9467e8, 0.0001], ['dione', 3.77396e8, 0.0022],
+    ['rhea', 5.27108e8, 0.0013], ['titan', 1.221870e9, 0.0288],
+    ['iapetus', 3.560820e9, 0.0286],
+  ],
+  uranus: [
+    ['miranda', 1.2990e8, 0.0013], ['ariel', 1.9090e8, 0.0012],
+    ['umbriel', 2.6600e8, 0.0039], ['titania', 4.3630e8, 0.0011],
+    ['oberon', 5.8350e8, 0.0014],
+  ],
+  neptune: [['triton', 3.5476e8, 0.000016, true]],
+};
+
+/** Put a planet's moons on their real orbits. */
+export function addMoons(world, planet, rng, list) {
+  const ms = list || MOON_SYSTEMS[String(planet.name || '').toLowerCase()];
+  if (!ms) return;
+  for (const [id, a, e, retrograde] of ms) {
+    orbit(world, planet, id, { a, e, M: rng() * TAU, retrograde: !!retrograde });
+  }
+}
+
 
 /**
  * What a catalogue body brings with it when you place one.
@@ -101,12 +168,12 @@ export function addSaturnMoons(world, saturn, rng) {
  * catalogue is what those helpers are built on — putting it the other way
  * round is an import cycle.
  */
-export const RETINUES = new Map([
-  ['saturn', (world, saturn, rng) => {
-    addSaturnRings(world, saturn, rng, 180);
-    addSaturnMoons(world, saturn, rng);
-  }],
-]);
+export const RETINUES = new Map(
+  ['jupiter', 'saturn', 'uranus', 'neptune'].map((id) => [id, (world, planet, rng) => {
+    addRings(world, planet, rng, id === 'saturn' ? 180 : 90, RING_SYSTEMS[id]);
+    addMoons(world, planet, rng, MOON_SYSTEMS[id]);
+  }]),
+);
 
 // ---------------------------------------------------------------------------
 
@@ -137,8 +204,9 @@ export const PRESETS = [
       // dedicated system — at six astronomical units across they are a few
       // pixels — but they are the same real bodies on the same real orbits,
       // and zooming in finds them there.
-      const saturn = world.bodies.find((b) => b.name === 'Saturn');
-      if (saturn) {
+      const giants = ['Jupiter', 'Saturn', 'Uranus', 'Neptune']
+        .map((nm) => world.bodies.find((b) => b.name === nm)).filter(Boolean);
+      if (giants.length) {
         const rng = makeRng(0x5a7c);
         // The rings cost more than they look. A ring particle orbits Saturn in
         // about ten hours; Mercury, the fastest thing here until now, takes
@@ -153,8 +221,13 @@ export const PRESETS = [
         // and Halley, which are added below, and quietly built a nine-body
         // solar system whenever the switch was off.
         if (!world.settings || world.settings.planetaryRings !== false) {
-          addSaturnMoons(world, saturn, rng);
-          addSaturnRings(world, saturn, rng, 90);
+          for (const g of giants) {
+            addMoons(world, g, rng);
+            // Fewer than a dedicated system gets. At six astronomical miles
+            // across these are a pixel or two, and every one of them orbits
+            // in hours, which is what the clock has to come down to.
+            addRings(world, g, rng, g.name === 'Saturn' ? 60 : 24);
+          }
         }
       }
       orbit(world, sun, 'ceres', { a: 2.7658 * AU, e: 0.0785, argP: deg(73.6), M: deg(95.99) });
@@ -200,6 +273,9 @@ export const PRESETS = [
       orbit(world, j, 'europa', { a: 6.71034e8, e: 0.009, M: deg(118) });
       orbit(world, j, 'ganymede', { a: 1.070412e9, e: 0.0013, M: deg(233) });
       orbit(world, j, 'callisto', { a: 1.882709e9, e: 0.0074, M: deg(41) });
+      // Jupiter has rings too. They are dust knocked off Metis and Adrastea,
+      // far too faint to see from Earth, and they are here because they exist.
+      addRings(world, j, makeRng(0x109e), 120, RING_SYSTEMS.jupiter);
       recenter(world);
       return { focus: j, zoom: 2.4e9, speed: 3600 * 6 };
     },
@@ -207,12 +283,12 @@ export const PRESETS = [
   {
     id: 'saturn-rings',
     name: 'Saturn and its rings',
-    blurb: 'A ring of rubble inside the Roche limit, and Titan and Enceladus outside it.',
+    blurb: 'A ring of rubble inside the Roche limit, and the seven classical moons outside it.',
     build(world) {
       const s = place(world, 'saturn');
       const rng = makeRng(0x5a7c);
       addSaturnRings(world, s, rng, 260);
-      addSaturnMoons(world, s, rng);
+      addMoons(world, s, rng);
       recenter(world);
       return { focus: s, zoom: 4.2e8, speed: 3600 };
     },

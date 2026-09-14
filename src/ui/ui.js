@@ -454,6 +454,14 @@ export class UI {
       ['Speed', formatSpeed(body.speed)],
       ['State', body.describeState()],
     ];
+    // Only where it could be anything but zero: a row reading 0% against every
+    // star, every gas giant and every comet in the sky is noise, not a
+    // measurement.
+    const life = body.lifePossibility ? body.lifePossibility() : 0;
+    if (life > 0.0005 || body.kind === 'planet' || body.kind === 'moon') {
+      stats.push(['Life possibility',
+        life >= 0.001 ? `${(life * 100).toFixed(life < 0.1 ? 1 : 0)}%` : '<0.1%']);
+    }
     if (body.spin) stats.push(['Rotation', fmtPeriod(TAU / Math.abs(body.spin), body.spin < 0)]);
     if (body.craters.length) stats.push(['Impacts', `${body.craters.length} recorded`]);
     if (body.mixes.length) stats.push(['Mergers', `${body.mixes.length}`]);
