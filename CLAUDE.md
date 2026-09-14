@@ -49,7 +49,7 @@ seeded pattern · `overlays.js` (381) trails, orbits, vectors · `effects.js` (3
 
 ### `src/ui/` — DOM, input, content.
 
-`tools.js` (749) · `ui.js` (737) panels, inspector, transport, speed popover ·
+`tools.js` (749) · `ui.js` (710) panels, inspector, transport, the speed slider ·
 `catalog.js` (693) the body picker's 82 objects · `presets.js` (558) the 15
 systems, plus `RING_SYSTEMS`, `MOON_SYSTEMS`, `RETINUES` · `settings.js` (135).
 
