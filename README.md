@@ -153,6 +153,15 @@ the two *mantles* and not from whole bodies, it comes out at 1.3% iron against
 the planet's 31.8% — which is the lunar iron depletion that the giant-impact
 hypothesis was invented to explain. Nothing in the code knows about the Moon.
 
+Resolved as parcels rather than as an outcome, the same event leaves both
+bodies with the interior it actually gave them. The planet that condenses is
+about four thousand cells and 96% molten, with iron at 92% of its core,
+silicate at 97% of its mantle and the light stuff on top; the moon beside it
+has no iron anywhere in it, basalt and olivine from centre to surface. Theia's
+metal is *in Earth's core* and the Moon is *made of mantle* — in the
+simulation's own state, not in a number printed next to it. The renderer paints
+those cells directly, so it is also what you are looking at.
+
 Load **Figure-eight choreography** for three equal masses on the
 Chenciner-Montgomery orbit. After a full period each returns to its start within
 7 × 10⁻⁵ AU.
@@ -282,14 +291,33 @@ trade frame rate for simulated rate.
 
 What costs: body count, and the spread of timescales in the scene. The step is
 shared, so the fastest body sets it for everyone — a scene holding both a tight
-pair and a wide orbit pays the tight pair's cadence throughout. The solar system
-and the Jovian system keep up at their opening speeds; Saturn's rings manage
-about half; the protoplanetary disc — 160 bodies all interacting, all colliding
-— runs its clock well below realtime, and says so rather than pretending
-otherwise. Fixing that properly means a neighbour scheme, which is not written.
+pair and a wide orbit pays the tight pair's cadence throughout.
+
+The solar system is the clearest case, because it now carries the ring systems
+of all four giants. A ring particle orbits Saturn in about ten hours; Mercury,
+the fastest thing there before, takes eighty-eight days. Measured: a year of
+solar system in 1.1 seconds without the rings and in about twenty-four with
+them, so the scene delivers roughly a day a second against the week a second it
+asks for, and the status line says **TIME LIMITED** rather than pretending
+otherwise. **Saturn's system in multi-planet scenes** turns the rings and the
+outer moons off if you would rather have the clock; a bare Saturn keeps up
+fine, and the dedicated Saturn and Jovian systems are unaffected either way.
+The protoplanetary disc — 160 bodies all interacting, all colliding — runs its
+clock well below realtime for the same reason. Fixing that properly means a
+neighbour scheme with per-body steps, which is not written.
 
 Turning on **Show diagnostics** puts substeps taken, fractional energy drift and
 the live effect count in the status bar.
+
+**Life possibility** in the inspector is read off the body and nothing else: a
+bell on temperature about 288 K, asymmetric because cold is survivable in a way
+hot is not; water at the surface; surface gravity in the band that holds an
+atmosphere without holding hydrogen; rock to stand on; and whether the ground
+has stopped being lava. They multiply, because these are requirements rather
+than points to be traded off — perfect in four of them and still at 4000 K is
+still nothing. The scale is anchored so that present-day Earth reads 100%,
+which makes it a habitability index and not a probability; nobody knows the
+probability. Earth 100%, Mars 13.5%, Venus and Mercury 0, TRAPPIST-1e 63.7%.
 
 ---
 
