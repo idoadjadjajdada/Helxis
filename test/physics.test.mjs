@@ -615,7 +615,10 @@ section('Regressions found in the second review');
   // system's barycentre over twenty years, and 2e-2 relative momentum error at
   // a wide opening angle.
   for (const theta of [0.3, 0.5, 0.8]) {
-    const w = new World({ collisions: false, thermal: false, tidalDisruption: false, frameBudgetMs: 1e9, maxSubsteps: 1e9, theta });
+    // No rings: this is a test of Barnes-Hut's momentum bookkeeping over twenty
+    // years, and eighty-three particles orbiting Saturn in ten hours turn it
+    // into a test of how long the machine will sit there.
+    const w = new World({ collisions: false, thermal: false, tidalDisruption: false, frameBudgetMs: 1e9, maxSubsteps: 1e9, theta, planetaryRings: false });
     loadPreset(w, 'solar-system');
     const bc0 = w.barycenter();
     let scale = 0;
